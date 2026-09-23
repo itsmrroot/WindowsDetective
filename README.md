@@ -32,7 +32,7 @@
 | 🔒 **Read-only** | Never deletes, kills, quarantines or "fixes" anything on the host |
 | 🧠 **Verdict, not just data** | 56 command-line rules and 30+ persistence checks, scored into a clear verdict with a 0–100 risk score |
 | 🗺️ **MITRE ATT&CK mapped** | Every finding links to the technique it indicates |
-| 🧹 **Low noise** | Repeated events are grouped with a count, and your own known-good tools can be allowlisted |
+| 🧹 **Low noise** | Repeated events are grouped with a count, encoded PowerShell is decoded for you, and your own known-good tools can be allowlisted |
 | 🕒 **Unified timeline** | Logons, executions, file drops, service installs and Defender events on one UTC timeline |
 | 📦 **Evidence-ready** | SHA-256 manifest, hashed ZIP archive and exported EVTX files for chain of custody |
 | 🌐 **Works offline** | The report is a single self-contained HTML file (light & dark mode) |
@@ -144,9 +144,9 @@ Prefetch • BAM • ShimCache (parsed) • Amcache (parsed, with SHA1) • User
 
 | Source | Detections |
 |---|---|
-| **Security** | RDP and public-IP logons, pass-the-hash style logons, NTLMv1, **brute force and password spraying, including a later successful logon**, new accounts and privileged-group changes, audit-policy and time changes, log clearing, service and task creation, admin-share access, process creation (4688) |
+| **Security** | RDP and public-IP logons, pass-the-hash style logons, NTLMv1, **brute force and password spraying (10+ failures within an hour), and a successful logon from the same source afterwards**, new accounts and privileged-group changes, audit-policy and time changes, log clearing, service and task creation, admin-share access, process creation (4688) |
 | **System** | Service installs (7045), including vulnerable or unsigned drivers • log clearing (104) • security services disabled |
-| **PowerShell** | Script blocks (4104) run through all rules • engine-flagged suspicious blocks • v2 downgrade |
+| **PowerShell** | Script blocks (4104) run through all rules • engine-flagged suspicious blocks • v2 downgrade • `-EncodedCommand` payloads **decoded** and shown in the finding |
 | **RDP** | Inbound (1149, 21–25) and outbound (1024) |
 | **Defender** | Detections, failed remediations, exclusions added, protection disabled, tamper attempts |
 | **Sysmon** | Process, network, remote thread, **LSASS access**, registry, DNS and process-tampering events |
@@ -177,7 +177,7 @@ Defender status, exclusions and detection history • Registered AV products •
 </details>
 
 > [!NOTE]
-> The tool recognises its own scripts, case folders and launcher by marker, so its own activity never shows up as a finding.
+> The tool ignores its own activity: everything inside the running copy's folder and its case folders, and tool files whose SHA-256 matches the running copy. Merely *mentioning* the tool's name in a command hides nothing, so an attacker can't use it to slip past. Copies of older versions left on a machine are analysed like any other downloaded script.
 
 ---
 
@@ -233,7 +233,14 @@ Optional binaries (`winpmem`, `yara64`) are covered in [tools/README.md](tools/R
 .\tests\Invoke-WDSelfTest.ps1
 ```
 
-The self-test checks that the rules compile, that common benign command lines don't raise alerts, that the helper functions behave, that every MITRE id has a name, and that the report renders. It runs on PowerShell 5.1 and 7 on any OS and doesn't touch the host.
+The self-test runs on PowerShell 5.1 and 7 on any OS and doesn't touch the host. It checks that:
+
+- every detection rule compiles, and common benign command lines don't raise alerts;
+- detection logic behaves correctly on **simulated event logs** (brute force, Defender setting changes, Tamper Protection);
+- encoded commands are decoded, repeated events are grouped, and the allowlist downgrades matching findings;
+- mentioning the tool's name can't hide a command;
+- the code contains no attack keywords that would make antivirus block it, and never assigns to PowerShell's built-in variables;
+- every MITRE id has a name, and the HTML report renders.
 
 ---
 
@@ -248,6 +255,7 @@ The self-test checks that the rules compile, that common benign command lines do
 > `-CollectRawArtifacts` copies the SAM and SECURITY hives, which contain credential material. Handle the case folder as sensitive evidence.
 
 - Locked files (hives, Amcache, SRUM) are copied through Volume Shadow Copy (`esentutl /vss`).
+- Registry hives are only ever parsed from **copies** (Amcache, and offline user hives with `-LoadUserHives`). The originals are never mounted, because mounting can write to them and change evidence.
 - This is automated triage. Validate each High or Critical finding before acting on it.
 
 ---
@@ -262,7 +270,7 @@ Windows Detective keeps all attack patterns in `rules\detection-data.json` (a da
 
 - Make sure every file in `lib\` and `rules\` is present. Antivirus may have quarantined one, so re-download if needed.
 - If your EDR still blocks it, add a temporary exclusion for the tool folder for the duration of the investigation (standard practice for IR tooling).
-- When Defender's history contains a detection of the tool's own files, the report lists it as **Info (category "Tool")**, not as malware on the host.
+- When Defender's history contains a detection of a file named like one of the tool's files, the report lists it as **Low (category "Tool")** instead of malware on the host. Compare the file's hash with the release to confirm it really is the tool.
 </details>
 
 ---
