@@ -112,7 +112,7 @@ function Invoke-WDDrivers {
             $sev = 'Low'; if ((Get-WDPathRisk $path) -ne 'None') { $sev = 'High' }
             Add-Finding -Severity $sev -Category 'Defense Evasion' -Title 'Running driver loaded from outside C:\Windows' -Evidence $ev -Mitre 'T1014'
         }
-        if ($info.Modified -and $info.Modified -ge $script:WD.Since.ToUniversalTime()) {
+        if ($info.Modified -and $info.Modified -ge $script:WD.Since.ToUniversalTime() -and -not $info.IsMicrosoft) {
             Add-WDTimeline -Time $info.Modified -Source 'Drivers' -Description "Driver file modified: $($d.Name)" -Detail $path -Severity 'Low'
         }
     }

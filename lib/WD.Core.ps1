@@ -4,7 +4,7 @@
 #  WD-SELF-MARKER (lets the tool exclude its own activity from detections)
 # =============================================================================
 
-$script:WDVersion  = '1.2.1'
+$script:WDVersion  = '1.2.2'
 $script:WDToolName = 'Windows Detective'
 $script:WDBrand    = 'Powered by Bashar Salmo'
 
@@ -260,7 +260,7 @@ function Get-WDFileInfo {
     $info = [pscustomobject][ordered]@{
         Path = $p; Exists = $false; Size = 0; Created = $null; Modified = $null
         SHA256 = ''; SigStatus = ''; Signer = ''; IsMicrosoft = $false; IsPE = ($p -match $script:WDPeExtRx)
-        Company = ''; Description = ''; OriginalName = ''
+        Company = ''; Description = ''; OriginalName = ''; IsAppAlias = $false
     }
     # Malformed command lines (stray quotes etc.) are not valid paths - record as missing.
     if ($p.IndexOfAny([IO.Path]::GetInvalidPathChars()) -ge 0 -or $p.IndexOfAny([char[]]'*?') -ge 0) {
@@ -271,6 +271,14 @@ function Get-WDFileInfo {
         if (Test-Path -LiteralPath $p -PathType Leaf -ErrorAction SilentlyContinue) {
             $fi = Get-Item -LiteralPath $p -Force -ErrorAction Stop
             $info.Exists   = $true
+            # Store-app execution aliases (0-byte reparse stubs in ...\AppData\Local\Microsoft\WindowsApps)
+            # cannot be read, hashed or signature-checked; the real binary lives in Program Files\WindowsApps.
+            if (($fi.Attributes -band [IO.FileAttributes]::ReparsePoint) -and $p -match '(?i)\\AppData\\Local\\Microsoft\\WindowsApps\\') {
+                $info.IsAppAlias = $true
+                $info.SigStatus = 'AppExecutionAlias'
+                $script:WD.FileCache[$p] = $info
+                return $info
+            }
             $info.Size     = $fi.Length
             $info.Created  = $fi.CreationTimeUtc
             $info.Modified = $fi.LastWriteTimeUtc
@@ -300,7 +308,7 @@ function Get-WDFileInfo {
 # Judges a binary by where it lives and whether it is properly signed.
 function Get-WDBinaryVerdict {
     param($Info)
-    if (-not $Info -or -not $Info.Exists) { return $null }
+    if (-not $Info -or -not $Info.Exists -or $Info.IsAppAlias) { return $null }
     $risk = Get-WDPathRisk $Info.Path
     $unsigned = $Info.IsPE -and $Info.SigStatus -ne 'Valid'
     if ($Info.SigStatus -eq 'HashMismatch') { return @{ Severity = 'High'; Reason = 'binary signature is broken (file modified after signing)' } }

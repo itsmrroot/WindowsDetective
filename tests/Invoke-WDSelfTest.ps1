@@ -79,6 +79,19 @@ foreach ($f in @(Get-ChildItem (Join-Path $root 'lib') -Filter *.ps1) + @(Get-It
     Assert-WD ((Get-Content $f.FullName -Raw) -notmatch $bait) "no AMSI bait strings in $($f.Name)"
 }
 
+# ---- no code assigns to PowerShell automatic / read-only variables (e.g. $PSHOME, $Host, $Matches)
+$automatic = @('pshome', 'host', 'pid', 'input', 'args', 'error', 'matches', 'home', 'profile', 'null', 'true', 'false', 'event', 'eventargs',
+    'this', 'psitem', '_', 'executioncontext', 'myinvocation', 'pscmdlet', 'psscriptroot', 'pscommandpath', 'pwd', 'shellid', 'sender',
+    'psversiontable', 'psculture', 'psuiculture', 'psboundparameters', 'stacktrace', 'iswindows', 'islinux', 'ismacos', 'iscoreclr', 'env')
+foreach ($f in @(Get-ChildItem (Join-Path $root 'lib') -Filter *.ps1) + @(Get-Item (Join-Path $root 'WindowsDetective.ps1'))) {
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$null)
+    $bad = @($ast.FindAll({ param($n)
+        $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $n.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+        $automatic -contains $n.Left.VariablePath.UserPath.ToLowerInvariant() }, $true))
+    Assert-WD ($bad.Count -eq 0) "no automatic-variable assignment in $($f.Name) $(($bad | ForEach-Object { "line $($_.Extent.StartLineNumber): $($_.Extent.Text)" }) -join '; ')"
+}
+
 # ---- every MITRE id used in the code has a name
 $ids = @{}
 foreach ($f in @(Get-ChildItem (Join-Path $root 'lib') -Filter *.ps1) + @(Get-Item $dataPath)) {

@@ -42,6 +42,7 @@ function Invoke-WDFileSystemCollector {
     $max = 8000; if ($deep) { $max = 40000 }
     $rows = New-Object System.Collections.Generic.List[object]
     $seen = @{}
+    $firstPathByHash = @{}
     foreach ($t in $targets) {
         if (-not (Test-Path -LiteralPath $t.Path)) { continue }
         $items = @(Get-ChildItem -LiteralPath $t.Path -Recurse -Depth $t.Depth -File -Force -ErrorAction SilentlyContinue |
@@ -52,6 +53,7 @@ function Invoke-WDFileSystemCollector {
             $seen[$f.FullName] = $true
             if ($f.FullName -match '(?i)\\AppData\\Local\\(Microsoft\\(Edge|Teams|OneDrive|WindowsApps)|Google\\Chrome|Mozilla|Packages|Programs\\Microsoft VS Code|JetBrains|pip|npm-cache|NuGet)\\' -and $f.Extension -match '(?i)^\.(dll|js|lnk)$') { continue }
             $info = Get-WDFileInfo $f.FullName
+            if ($info.IsAppAlias) { continue }
             $zone = Get-WDZoneInfo $f.FullName
             $risk = Get-WDPathRisk $f.FullName
             $row = [pscustomobject][ordered]@{
@@ -61,7 +63,13 @@ function Invoke-WDFileSystemCollector {
             }
             $rows.Add($row)
             $when = $f.CreationTime; if ($f.LastWriteTime -gt $when) { $when = $f.LastWriteTime }
-            $ev = "$($f.FullName) | created $($row.CreatedUtc) UTC | sha256 $($info.SHA256) | sig $($info.SigStatus) $($info.Signer)"
+            # Copies of the same file (same SHA-256) share one finding; the '#' column counts them.
+            $evPath = $f.FullName
+            if ($info.SHA256) {
+                if ($firstPathByHash.ContainsKey($info.SHA256)) { $evPath = $firstPathByHash[$info.SHA256] + ' (and other copies with the same hash)' }
+                else { $firstPathByHash[$info.SHA256] = $f.FullName }
+            }
+            $ev = "$evPath | sha256 $($info.SHA256) | sig $($info.SigStatus) $($info.Signer)"
             if ($zone -and $zone.HostUrl) { $ev += " | downloaded from $($zone.HostUrl)" }
             Add-WDTimeline -Time $f.CreationTime -Source 'FileSystem' -Description "File created: $($f.Name)" -Detail $f.FullName -Severity $(if ($risk -eq 'High') { 'Low' } else { 'Info' })
 

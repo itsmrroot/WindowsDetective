@@ -295,10 +295,10 @@ function Invoke-WDPowerShellLogs {
         # Code PowerShell generates for CIM-based Windows cmdlets (Defender, NetTCPIP, ScheduledTasks, ...)
         # and modules shipped in $PSHOME are part of the OS; skip every part of such script blocks.
         $osBlocks = @{}
-        $pshome = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\"
+        $osPsDir = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\"
         foreach ($e in $events) {
             $d = $e.Data
-            if (([string]$d.ScriptBlockText) -match '__cmdletization_|Microsoft\.PowerShell\.Cmdletization' -or ([string]$d.Path).StartsWith($pshome, [StringComparison]::OrdinalIgnoreCase)) {
+            if (([string]$d.ScriptBlockText) -match '__cmdletization_|Microsoft\.PowerShell\.Cmdletization' -or ([string]$d.Path).StartsWith($osPsDir, [StringComparison]::OrdinalIgnoreCase)) {
                 $osBlocks[[string]$d.ScriptBlockId] = $true
             }
         }
