@@ -379,7 +379,18 @@ function Invoke-WDDefenderLog {
             { $_ -in 1118, 1119 } { Add-Finding -Severity Critical -Category 'Malware' -Title "Defender FAILED to remediate: $threat" -Evidence "Path: $path | Action: $act | Error: $($d.'Error Description')" -Mitre 'T1204.002' -Time $e.Time -Source "Defender $($e.Id)" }
             5001 { Add-Finding -Severity High -Category 'Defense Evasion' -Title 'Defender real-time protection was disabled' -Evidence 'Event 5001' -Mitre 'T1562.001' -Time $e.Time -Source 'Defender 5001' }
             { $_ -in 5010, 5012 } { Add-Finding -Severity High -Category 'Defense Evasion' -Title 'Defender scanning disabled' -Evidence "Event $($e.Id)" -Mitre 'T1562.001' -Time $e.Time -Source "Defender $($e.Id)" }
-            5013 { Add-Finding -Severity High -Category 'Defense Evasion' -Title 'Tamper Protection blocked a change to Defender (someone tried to disable it)' -Evidence "$($d.Value) $($d.'New Value')" -Mitre 'T1562.001' -Time $e.Time -Source 'Defender 5013' }
+            5013 {
+                # 5013 fires on ANY blocked write - including writes that would not weaken protection
+                # (e.g. "DisableRealtimeMonitoring = 0 -> 0"). Only an attempted Disable*=1 is an attack signal.
+                $change = "$($d.Value) $($d.'New Value')"
+                $weakening = $true
+                if ($change -match '(?i)\\(Disable[A-Za-z]*)\s*=\s*\S+\s*->\s*(0x0*|0)\b') { $weakening = $false }
+                if ($weakening) {
+                    Add-Finding -Severity High -Category 'Defense Evasion' -Title 'Tamper Protection blocked an attempt to weaken Defender' -Evidence $change -Mitre 'T1562.001' -Time $e.Time -Source 'Defender 5013'
+                } else {
+                    Add-Finding -Severity Low -Category 'Defense Evasion' -Title 'Tamper Protection blocked a Defender setting write that would not weaken protection' -Detail 'Often caused by tweak tools or scripts re-applying default values.' -Evidence $change -Mitre 'T1562.001' -Time $e.Time -Source 'Defender 5013'
+                }
+            }
             5007 {
                 $nv = [string]$d.'New Value'
                 if ($nv -match '(?i)\\Exclusions\\(Paths|Processes|Extensions|IpAddresses)\\') {
@@ -469,7 +480,7 @@ function Invoke-WDMiscLogs {
     }
     foreach ($e in (Get-WDEvents -LogName 'Microsoft-Windows-Bits-Client/Operational' -Id 59)) {
         $url = [string]$e.Data.url
-        if (-not $url -or $url -match '(?i)(windowsupdate|microsoft\.com|msedge|office\.net|delivery\.mp|live\.com|bing\.com|adobe|google)') { continue }
+        if (-not $url -or $url -match '(?i)(windowsupdate|microsoft\.com|msedge|office\.net|delivery\.mp|live\.com|bing\.com|sfx\.ms|onedrive|adobe|google)') { continue }
         Add-WDTimeline -Time $e.Time -Source 'BITS 59' -Description "BITS transfer: $($e.Data.name)" -Detail $url -Severity 'Low'
         [void](Invoke-WDCommandCheck -Text $url -Source 'BITS transfer' -Time $e.Time -Category 'Network')
         if ($url -match '(?i)\.(exe|dll|ps1|bat|hta|vbs|zip|7z|rar|bin|dat)(\?|$)') {

@@ -4,7 +4,7 @@
 #  WD-SELF-MARKER (lets the tool exclude its own activity from detections)
 # =============================================================================
 
-$script:WDVersion  = '1.3.0'
+$script:WDVersion  = '1.3.1'
 $script:WDToolName = 'Windows Detective'
 $script:WDBrand    = 'Powered by Bashar Salmo'
 
@@ -232,6 +232,7 @@ function Add-WDTimeline {
     if ($script:WD.Timeline.Count -ge $script:WD.MaxTimeline) { return }
     $ts = ConvertTo-WDTimeString $Time
     if (-not $ts) { return }
+    if ($Severity -ne 'Info' -and $script:WD.Allowlist.Count -gt 0 -and (Test-WDAllowlisted "$Description`n$Detail")) { $Severity = 'Info' }
     $script:WD.Timeline.Add([pscustomobject][ordered]@{
         TimeUtc     = $ts
         Severity    = $Severity
