@@ -1,141 +1,280 @@
-# Windows Detective
+<div align="center">
 
-**Live-response forensic triage and compromise assessment for Windows.**
+# 🕵️ Windows Detective
+
+### Live-response forensic triage & compromise assessment for Windows
+
 **Powered by Bashar Salmo**
 
-Windows Detective answers the first question in any incident: *has this Windows machine been compromised, and how?*
-In one run it collects and analyses the artifacts an incident responder would otherwise gather by hand. It produces an interactive HTML report with a verdict, prioritised findings mapped to MITRE ATT&CK, a unified timeline and a case folder you can use as evidence.
+[![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE?logo=powershell&logoColor=white)](#-quick-start)
+[![Platform](https://img.shields.io/badge/Windows-10%20%7C%2011%20%7C%20Server%202016%2B-0078D6?logo=windows&logoColor=white)](#-quick-start)
+[![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-mapped-C8102E)](#-what-it-investigates)
+[![Read-only](https://img.shields.io/badge/host%20impact-read--only-2EA043)](#-forensic-notes)
+[![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
-- Pure PowerShell 5.1: nothing to install, runs on every Windows 10/11 and Server 2016+ host
-- Read-only: it never deletes, kills, quarantines or "fixes" anything on the host
-- Works offline: the report is a single self-contained HTML file
-- Takes a few minutes in standard mode
+*A laptop may have been hacked. One command answers the question.*
+
+[Quick start](#-quick-start) •
+[Coverage](#-what-it-investigates) •
+[Output](#-output) •
+[Threat intel](#-bring-your-own-threat-intel) •
+[Forensic notes](#-forensic-notes)
+
+</div>
 
 ---
 
-## Quick start
+## ✨ Highlights
 
-1. Copy the whole folder to a USB drive or network share. Don't install it on the suspect machine.
-2. On the suspect laptop, right-click **`Run-WindowsDetective.bat`** and choose **Run as administrator**.
-3. When it finishes, the report opens automatically. The case folder and ZIP are in `Cases\`.
+| | |
+|---|---|
+| ⚡ **Zero install** | Pure PowerShell 5.1: runs from a USB stick on any Windows 10/11 or Server 2016+ host |
+| 🔒 **Read-only** | Never deletes, kills, quarantines or "fixes" anything on the host |
+| 🧠 **Verdict, not just data** | 56 command-line rules and 30+ persistence checks, scored into a clear verdict with a 0–100 risk score |
+| 🗺️ **MITRE ATT&CK mapped** | Every finding links to the technique it indicates |
+| 🕒 **Unified timeline** | Logons, executions, file drops, service installs and Defender events on one UTC timeline |
+| 📦 **Evidence-ready** | SHA-256 manifest, hashed ZIP archive and exported EVTX files for chain of custody |
+| 🌐 **Works offline** | The report is a single self-contained HTML file (light & dark mode) |
 
-Or from an elevated PowerShell:
+---
+
+## 🚀 Quick start
+
+> [!TIP]
+> Copy the folder to **external media** and write the output there too. Don't install anything on the suspect machine.
+
+**Option 1: double-click**
+
+Right-click **`Run-WindowsDetective.bat`** and choose **Run as administrator**. The report opens automatically when the run finishes.
+
+**Option 2: PowerShell**
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\WindowsDetective.ps1 -CaseId IR-2026-042 -Analyst "Jane Doe" -OutputPath E:\Cases -OpenReport
 ```
 
-Full collection for a serious incident (memory first, deeper checks, raw evidence):
+**Option 3: full incident collection** (memory first, deep checks, raw evidence)
 
 ```powershell
 .\WindowsDetective.ps1 -MemoryDump -Deep -CollectRawArtifacts -LoadUserHives -Days 90 -OutputPath E:\Cases
 ```
 
+<details>
+<summary><b>⚙️ All parameters</b></summary>
+
 | Parameter | Purpose |
 |---|---|
-| `-Days <n>` | Investigation window (default 30) |
+| `-Days <n>` | Investigation window (default **30**) |
 | `-CaseId`, `-Analyst` | Printed in the report for chain of custody |
-| `-OutputPath` | Where the case folder is written. Use external media for evidential work. |
+| `-OutputPath` | Where the case folder is written (use external media) |
 | `-Quick` | Fast triage: fewer events, smaller file sweep |
-| `-Deep` | Loaded-DLL scan, System32 change check, deeper file sweep, 4x more events |
-| `-CollectRawArtifacts` | Copy registry hives, Amcache, SRUM, WMI repository, browser history, jump lists, Prefetch, Tasks, Defender MPLog and flagged files |
-| `-MemoryDump` | Capture RAM first (needs `tools\winpmem*.exe`) |
-| `-LoadUserHives` | Also analyse the registry of users who are not logged on |
-| `-NoEvtx` / `-NoZip` | Skip the EVTX export or the ZIP archive |
+| `-Deep` | Loaded-DLL scan, System32 change check, deeper file sweep, 4× more events |
+| `-CollectRawArtifacts` | Copies registry hives, Amcache, SRUM, WMI repository, browser history, jump lists, Prefetch, Tasks, Defender MPLog and flagged files |
+| `-MemoryDump` | Captures RAM first (needs `tools\winpmem*.exe`) |
+| `-LoadUserHives` | Also analyses the registry of users who are not logged on |
+| `-NoEvtx` / `-NoZip` | Skips the EVTX export or the ZIP archive |
 | `-MaxEvents <n>` | Events read per query (default 5000) |
 | `-IocPath` | Folder of IOC lists (default `iocs\`) |
+| `-OpenReport` | Opens the HTML report when finished |
+
+</details>
 
 ---
 
-## What it investigates
+## 🔄 How it works
 
-| Area | Coverage |
+```mermaid
+flowchart LR
+    A[🧠 Memory<br/><sub>optional</sub>] --> B[⚙️ Processes]
+    B --> C[🌐 Network]
+    C --> D[👤 Accounts]
+    D --> E[🔁 Persistence]
+    E --> F[▶️ Execution<br/>artifacts]
+    F --> G[📜 Event logs]
+    G --> H[📁 File system<br/>& devices]
+    H --> I[🛡️ Security<br/>posture]
+    I --> J[🎯 YARA & IOC<br/>matching]
+    J --> K[📊 Report, timeline<br/>& evidence ZIP]
+```
+
+Collection follows the **order of volatility**: memory first, then processes and network, then everything else.
+
+---
+
+## 🔍 What it investigates
+
+<details open>
+<summary><b>⚙️ Processes</b></summary>
+
+- SHA-256 hash and signature of every running image
+- Masquerading, such as `svchost.exe` in the wrong folder or look-alike names (`scvhost.exe`, `lsasss.exe`)
+- Wrong parents: Office or PDF readers, web servers, WMI or `services.exe` spawning shells
+- Processes whose executable was deleted, and renamed well-known tools
+- Loaded DLLs from user-writable paths (`-Deep`)
+</details>
+
+<details>
+<summary><b>🌐 Network</b></summary>
+
+- Connections and listening ports with the owning process
+- LOLBins or scripts talking to the internet, common C2 ports and bind shells
+- Inbound RDP from public IP addresses
+- DNS cache: tunnels (ngrok, trycloudflare), paste sites and IP-lookup services
+- `hosts` file tampering, **netsh portproxy** pivots, proxy and PAC settings
+- Shares, SMB sessions, ARP, routes, Wi-Fi profiles, firewall profiles and rules, RDP configuration
+</details>
+
+<details>
+<summary><b>🔁 Persistence: 30+ autostart locations</b></summary>
+
+Run and RunOnce keys (machine and every user) • Startup folders • Services (ImagePath, ServiceDll, FailureCommand, unquoted paths) • Scheduled tasks, including **hidden Tarrask-style tasks** • WMI event subscriptions • IFEO and SilentProcessExit • Winlogon Shell, Userinit and Notify • AppInit and AppCert DLLs • LSA packages and password filters • Sticky-keys backdoors • Netsh helpers • Print monitors • Time providers • COM hijacking • Office Test key • Screensaver • PowerShell profiles • Active Setup • BootExecute • BITS jobs
+</details>
+
+<details>
+<summary><b>▶️ Evidence of execution</b></summary>
+
+Prefetch • BAM • ShimCache (parsed) • Amcache (parsed, with SHA1) • UserAssist (ROT13-decoded) • **RunMRU**, which catches ClickFix fake-CAPTCHA pastes • PSReadLine history • Recent documents
+</details>
+
+<details>
+<summary><b>📜 Event logs</b></summary>
+
+| Source | Detections |
 |---|---|
-| **Processes** | Hash and signature of every image, masquerading (e.g. `svchost.exe` running from the wrong folder, look-alike names), wrong parent processes, Office apps or web servers spawning shells, deleted images, renamed tools, 56 command-line detection rules, loaded DLLs from user paths (`-Deep`) |
-| **Network** | TCP/UDP connections with owning process, LOLBins talking to the internet, C2 ports, bind shells, inbound RDP from public IPs, DNS cache (tunnels, paste sites, IP lookups), hosts file tampering, **netsh portproxy** pivots, proxies/PAC, shares, SMB sessions, ARP, routes, Wi-Fi, firewall profiles and rules, RDP configuration |
-| **Persistence** | Run/RunOnce (machine and every user), Startup folders, services (ImagePath, ServiceDll, FailureCommand, unquoted paths), scheduled tasks including **hidden Tarrask-style tasks**, WMI subscriptions, IFEO/SilentProcessExit, Winlogon, AppInit/AppCert DLLs, LSA packages and password filters, sticky-keys backdoors, netsh helpers, print monitors, time providers, COM hijacks, Office Test key, screensaver, PowerShell profiles, Active Setup, BootExecute, BITS jobs |
-| **Evidence of execution** | Prefetch, BAM, ShimCache (parsed), Amcache (parsed, SHA1), UserAssist (ROT13-decoded), **RunMRU / ClickFix** fake-CAPTCHA pastes, PSReadLine history, recent documents |
-| **Event logs** | Logons (RDP, public IPs, NewCredentials/pass-the-hash, NTLMv1), **brute force and password spraying, including a later successful logon**, account and group changes, audit-policy and time changes, log clearing (1102/104), service installs (7045/4697), task creation (4698/4702), admin shares, process creation (4688), PowerShell 4104/400 (downgrade), RDP (1149, 21-25, outbound 1024), Defender (detections, failed remediation, exclusions, tamper attempts), Sysmon (1, 3, 8, 10 LSASS access, 12/13, 22, 25), Task Scheduler, BITS, WinRM, WMI-Activity 5861, firewall rule changes |
-| **File system** | Executables, scripts, disk images, OneNote/CHM/XLL and LNK files created in user-writable locations during the window, with hash, signature and **Mark-of-the-Web download URL**; double extensions/RTLO, malicious shortcuts, ransom notes, shadow copies, USB history, browser extensions (sideloaded or high-permission) |
-| **Security posture** | Defender status, exclusions and detection history, AV products, **BYOVD vulnerable drivers** and unsigned drivers, UAC, WDigest, LSA protection, RestrictedAdmin, LocalAccountTokenFilterPolicy, LM/NTLM settings, SMBv1, Credential Guard, BitLocker, Secure Boot, PowerShell v2, plaintext credentials in history/unattend files |
-| **Accounts** | Local users, hidden/`$` accounts, enabled Guest/Administrator, privileged group members, new profiles, logged-on sessions |
-| **Threat intel** | Matches file hashes (MD5/SHA1/SHA256), IPs and domains against `iocs\*.txt`. Runs YARA over process images, autoruns and suspicious files (`tools\yara64.exe` + `rules\`). Exports every observed indicator for SIEM pivoting. |
-| **Remote-access abuse** | 50+ RMM/remote tools (AnyDesk, ScreenConnect, NetSupport, Atera, RustDesk, ...) plus offensive and dual-use tools (Mimikatz, Rubeus, AdFind, rclone, ngrok, Chisel, EDR killers ...) found in processes, software, Prefetch, BAM, Amcache and files |
+| **Security** | RDP and public-IP logons, pass-the-hash style logons, NTLMv1, **brute force and password spraying, including a later successful logon**, new accounts and privileged-group changes, audit-policy and time changes, log clearing, service and task creation, admin-share access, process creation (4688) |
+| **System** | Service installs (7045), including vulnerable or unsigned drivers • log clearing (104) • security services disabled |
+| **PowerShell** | Script blocks (4104) run through all rules • engine-flagged suspicious blocks • v2 downgrade |
+| **RDP** | Inbound (1149, 21–25) and outbound (1024) |
+| **Defender** | Detections, failed remediations, exclusions added, protection disabled, tamper attempts |
+| **Sysmon** | Process, network, remote thread, **LSASS access**, registry, DNS and process-tampering events |
+| **Other** | Task Scheduler, BITS, WinRM, WMI-Activity 5861, firewall rule changes |
+</details>
 
-The tool excludes its own activity from detections: its scripts, case folders and launcher are recognised by marker.
+<details>
+<summary><b>📁 File system & devices</b></summary>
+
+- Executables, scripts, disk images, OneNote, CHM, XLL and LNK files dropped in user-writable locations
+- Hash, signature and the **Mark-of-the-Web download URL** of each file
+- Double extensions and right-to-left-override filename tricks, malicious shortcuts, ransom notes
+- Shadow copies, USB history, sideloaded or high-permission browser extensions
+</details>
+
+<details>
+<summary><b>🛡️ Security posture & defense evasion</b></summary>
+
+Defender status, exclusions and detection history • Registered AV products • **BYOVD vulnerable drivers** and unsigned drivers • UAC • WDigest • LSA protection • RestrictedAdmin • LocalAccountTokenFilterPolicy • LM/NTLM settings • SMBv1 • Credential Guard • BitLocker • Secure Boot • PowerShell v2 • Plaintext credentials in history and unattend files
+</details>
+
+<details>
+<summary><b>👤 Accounts & 🧰 attacker tooling</b></summary>
+
+- Hidden and `$` accounts, enabled Guest or Administrator, privileged group members, new profiles, logged-on sessions
+- **30+ remote-access / RMM tools** (AnyDesk, ScreenConnect, NetSupport, Atera, RustDesk, …)
+- Offensive and dual-use tools (Mimikatz, Rubeus, AdFind, rclone, ngrok, Chisel, EDR killers, …) found in processes, installed software, Prefetch, BAM, Amcache and files
+</details>
+
+> [!NOTE]
+> The tool recognises its own scripts, case folders and launcher by marker, so its own activity never shows up as a finding.
 
 ---
 
-## Output
+## 📊 Output
 
-```
+| Verdict | Trigger |
+|---|---|
+| 🔴 **COMPROMISED** | Any Critical finding |
+| 🟠 **HIGHLY SUSPICIOUS** | 3 or more High findings |
+| 🟠 **SUSPICIOUS** | Any High finding |
+| 🟡 **NEEDS REVIEW** | 5 or more Medium findings |
+| 🟢 **NO STRONG INDICATORS** | Anything else |
+
+The report also generates recommended next steps from what was found: containment, credential resets, ransomware handling and so on.
+
+```text
 Cases\WDCase_<HOST>_<timestamp>\
-  WindowsDetective_Report.html   interactive report (verdict, findings, ATT&CK, timeline, artifacts)
-  findings.json / findings.csv   all findings with severity, evidence and MITRE ids
-  timeline.csv                   unified UTC timeline from every source
-  system_info.json               host profile
-  collection.log                 what ran, when, and any errors
-  collection_stats.csv           per-collector timing
-  manifest.sha256.csv            SHA-256 of every output file (integrity / chain of custody)
-  raw\                           every artifact as CSV, process tree, audit policy, BITS, observed indicators
-  evtx\                          exported event logs for offline analysis (Hayabusa, Chainsaw, EvtxECmd)
-  files\                         Amcache, PSReadLine histories, raw artifacts, flagged files (<sha256>.bin)
-  memory\                        physical memory image (only with -MemoryDump, kept out of the ZIP)
-WDCase_<HOST>_<timestamp>.zip + .zip.sha256
+├── WindowsDetective_Report.html   interactive report: verdict, findings, ATT&CK, timeline, artifacts
+├── findings.json / findings.csv   all findings with severity, evidence and MITRE ids
+├── timeline.csv                   unified UTC timeline from every source
+├── system_info.json               host profile
+├── collection.log                 what ran, when, and any errors
+├── manifest.sha256.csv            SHA-256 of every output file (chain of custody)
+├── raw\                           every artifact as CSV, process tree, audit policy, observed indicators
+├── evtx\                          exported event logs (Hayabusa / Chainsaw / EvtxECmd ready)
+├── files\                         Amcache, PSReadLine histories, raw artifacts, flagged files as <sha256>.bin
+└── memory\                        RAM image (only with -MemoryDump, kept out of the ZIP)
+WDCase_<HOST>_<timestamp>.zip  +  .zip.sha256
 ```
-
-**Verdict logic:** any Critical finding means **COMPROMISED**, 3 or more High findings means **HIGHLY SUSPICIOUS**, any High means **SUSPICIOUS**, 5 or more Medium means **NEEDS REVIEW**, otherwise **NO STRONG INDICATORS**. The report also generates recommended next steps (containment, credential resets, ransomware handling, and so on) from what was found.
 
 ---
 
-## Adding threat intelligence
+## 🎯 Bring your own threat intel
 
-- **IOCs:** put one indicator per line in `iocs\hashes.txt`, `iocs\ips.txt` or `iocs\domains.txt`, optionally followed by `, description`. `hashes.txt` ships with the harmless EICAR test hashes so you can test matching.
-- **YARA:** place `yara64.exe` in `tools\` and add `.yar` files to `rules\`. Starter rules are included; community sets such as signature-base work as well.
-- **Detection rules:** command-line rules live in `lib\WD.Rules.ps1` as `Id, Severity, MITRE, Title, Regex`, so you can add your own in one line.
+| What | How |
+|---|---|
+| **IOCs** | One indicator per line in `iocs\hashes.txt`, `iocs\ips.txt` or `iocs\domains.txt`, with an optional `, description`. Harmless EICAR test hashes are included so you can check matching works. |
+| **YARA** | Drop `yara64.exe` into `tools\` and your `.yar` files into `rules\`. Starter rules are included. |
+| **Custom rules** | Add one line to `lib\WD.Rules.ps1`: `Id, Severity, MITRE, Title, Regex`. |
 
-## Testing
+Optional binaries (`winpmem`, `yara64`) are covered in [tools/README.md](tools/README.md).
+
+---
+
+## 🧪 Testing
 
 ```powershell
 .\tests\Invoke-WDSelfTest.ps1
 ```
 
-The self-test validates rule compilation, false-positive resistance on common benign command lines, the helper functions, MITRE mapping completeness and report rendering. It runs on Windows PowerShell 5.1 and PowerShell 7 on any OS and doesn't touch the host.
-
-## Forensic notes
-
-- Run as **Administrator**. Without it the Security log, Amcache, hidden tasks and other users' data are unavailable, and the report warns you.
-- Write output to **external media** (`-OutputPath E:\Cases`) to avoid overwriting deleted data on the evidence disk.
-- Capture **memory first** (`-MemoryDump`) if you suspect fileless malware. Never reboot a suspect host before memory capture.
-- Locked files (hives, Amcache, SRUM) are copied through Volume Shadow Copy (`esentutl /vss`).
-- `-CollectRawArtifacts` copies the SAM and SECURITY hives, which contain credential material. Handle the case folder as sensitive evidence.
-- This is automated triage, not a verdict of a court. Validate each High or Critical finding before acting on it.
-
-## Project layout
-
-```
-WindowsDetective.ps1        entry point / orchestration
-Run-WindowsDetective.bat    double-click launcher (self-elevates)
-lib\WD.Core.ps1             context, findings, timeline, file/registry/event helpers
-lib\WD.Rules.ps1            detection rules, tool/RMM/BYOVD intel, masquerading, MITRE names
-lib\WD.System.ps1           host profile, patches, software, accounts
-lib\WD.Processes.ps1        live process analysis
-lib\WD.Network.ps1          connections, DNS, hosts, proxy, portproxy, firewall, RDP
-lib\WD.Persistence.ps1      30+ autostart locations
-lib\WD.Execution.ps1        Prefetch, BAM, ShimCache, Amcache, UserAssist, RunMRU, PSReadLine
-lib\WD.EventLogs.ps1        Security/System/PowerShell/RDP/Defender/Sysmon/... analysis
-lib\WD.FileSystem.ps1       file sweep, MOTW, ransom notes, USB, browser extensions
-lib\WD.Security.ps1         Defender, drivers (BYOVD), hardening controls
-lib\WD.Evidence.ps1         IOC matching, YARA, memory capture, EVTX export, raw artifacts, manifest
-lib\WD.Report.ps1           HTML / JSON / CSV reporting
-iocs\  rules\  tools\  tests\
-```
-
-## License
-
-MIT - see [LICENSE](LICENSE).
+The self-test checks that the rules compile, that common benign command lines don't raise alerts, that the helper functions behave, that every MITRE id has a name, and that the report renders. It runs on PowerShell 5.1 and 7 on any OS and doesn't touch the host.
 
 ---
 
-**Windows Detective - Powered by Bashar Salmo**
+## 🧾 Forensic notes
+
+> [!IMPORTANT]
+> - Run as **Administrator**. Without it the Security log, Amcache, hidden tasks and other users' data are unavailable, and the report warns you.
+> - Write output to **external media** (`-OutputPath E:\Cases`) to avoid overwriting deleted data on the evidence disk.
+> - Capture **memory first** (`-MemoryDump`) when fileless malware is suspected. Never reboot a suspect host before memory capture.
+
+> [!WARNING]
+> `-CollectRawArtifacts` copies the SAM and SECURITY hives, which contain credential material. Handle the case folder as sensitive evidence.
+
+- Locked files (hives, Amcache, SRUM) are copied through Volume Shadow Copy (`esentutl /vss`).
+- This is automated triage. Validate each High or Critical finding before acting on it.
+
+---
+
+<details>
+<summary><b>🗂️ Project layout</b></summary>
+
+```text
+WindowsDetective.ps1        entry point / orchestration
+Run-WindowsDetective.bat    double-click launcher (self-elevates)
+lib/
+├── WD.Core.ps1             context, findings, timeline, file/registry/event helpers
+├── WD.Rules.ps1            detection rules, tool/RMM/BYOVD intel, masquerading, MITRE names
+├── WD.System.ps1           host profile, patches, software, accounts
+├── WD.Processes.ps1        live process analysis
+├── WD.Network.ps1          connections, DNS, hosts, proxy, portproxy, firewall, RDP
+├── WD.Persistence.ps1      30+ autostart locations
+├── WD.Execution.ps1        Prefetch, BAM, ShimCache, Amcache, UserAssist, RunMRU, PSReadLine
+├── WD.EventLogs.ps1        Security / System / PowerShell / RDP / Defender / Sysmon analysis
+├── WD.FileSystem.ps1       file sweep, MOTW, ransom notes, USB, browser extensions
+├── WD.Security.ps1         Defender, drivers (BYOVD), hardening controls
+├── WD.Evidence.ps1         IOC matching, YARA, memory, EVTX export, raw artifacts, manifest
+└── WD.Report.ps1           HTML / JSON / CSV reporting
+iocs/  rules/  tools/  tests/
+```
+
+</details>
+
+---
+
+<div align="center">
+
+**🕵️ Windows Detective**: Powered by **Bashar Salmo**
+
+Released under the [MIT License](LICENSE)
+
+</div>
