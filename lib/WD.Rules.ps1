@@ -67,14 +67,20 @@ function Invoke-WDCommandCheck {
     $hits = Test-WDCommandLine $Text
     $decoded = ''
     if (-not $NoDecode -and ($hits | Where-Object { $_.Id -eq 'CMD-001' })) { $decoded = ConvertFrom-WDEncodedCommand $Text }
+    $decodedHits = 0
+    if ($decoded) { $decodedHits = Invoke-WDCommandCheck -Text $decoded -Source "$Source (decoded -EncodedCommand)" -Time $Time -Context $Context -Category $Category -NoDecode }
     foreach ($r in $hits) {
         $detail = "Rule $($r.Id) matched in $Source."
         if ($Context) { $detail += " $Context" }
-        if ($decoded -and $r.Id -eq 'CMD-001') { $detail += " DECODED COMMAND: $(Limit-WDText $decoded 800)" }
-        Add-Finding -Severity $r.Severity -Category $Category -Title $r.Title -Detail $detail -Evidence $Text -Mitre $r.Mitre -Time $Time -Source $Source
+        $sev = $r.Severity
+        if ($decoded -and $r.Id -eq 'CMD-001') {
+            $detail += " DECODED COMMAND: $(Limit-WDText $decoded 800)"
+            # Plenty of legitimate software uses -EncodedCommand; stay High only when the payload is suspicious.
+            if ($decodedHits -eq 0) { $sev = 'Medium'; $detail += ' (decoded payload matched no other rule)' }
+        }
+        Add-Finding -Severity $sev -Category $Category -Title $r.Title -Detail $detail -Evidence $Text -Mitre $r.Mitre -Time $Time -Source $Source
     }
-    $count = $hits.Count
-    if ($decoded) { $count += Invoke-WDCommandCheck -Text $decoded -Source "$Source (decoded -EncodedCommand)" -Time $Time -Context $Context -Category $Category -NoDecode }
+    $count = $hits.Count + $decodedHits
     return $count
 }
 

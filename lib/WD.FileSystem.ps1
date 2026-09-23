@@ -48,7 +48,7 @@ function Invoke-WDFileSystemCollector {
             Where-Object { $_.Name -match $script:WDInterestingExtRx -and ($_.LastWriteTime -ge $script:WD.Since -or $_.CreationTime -ge $script:WD.Since) })
         foreach ($f in $items) {
             if ($rows.Count -ge $max) { break }
-            if ($seen.ContainsKey($f.FullName) -or $f.FullName -match $script:WDSelfExclusionRx) { continue }
+            if ($seen.ContainsKey($f.FullName) -or $f.FullName -match $script:WDSelfExclusionRx -or (Test-WDSelfPath $f.FullName)) { continue }
             $seen[$f.FullName] = $true
             if ($f.FullName -match '(?i)\\AppData\\Local\\(Microsoft\\(Edge|Teams|OneDrive|WindowsApps)|Google\\Chrome|Mozilla|Packages|Programs\\Microsoft VS Code|JetBrains|pip|npm-cache|NuGet)\\' -and $f.Extension -match '(?i)^\.(dll|js|lnk)$') { continue }
             $info = Get-WDFileInfo $f.FullName
@@ -82,8 +82,10 @@ function Invoke-WDFileSystemCollector {
                 if ($masq -and $f.Extension -eq '.exe') { Add-Finding -Severity High -Category 'Files' -Title "Masquerading file: $masq" -Evidence $ev -Mitre 'T1036.005' -Time $when; $flagged = $true }
             }
             if ($f.Name -match $script:WDScriptExtRx) {
-                if ($risk -eq 'High' -or ($zone -and $zone.ZoneId -eq '3')) {
-                    Add-Finding -Severity Medium -Category 'Files' -Title "Script ($($f.Extension)) dropped in high-risk location or downloaded" -Evidence $ev -Mitre 'T1059' -Time $when; $flagged = $true
+                if ($risk -eq 'High') {
+                    Add-Finding -Severity Medium -Category 'Files' -Title "Script ($($f.Extension)) dropped in high-risk location" -Evidence $ev -Mitre 'T1059' -Time $when; $flagged = $true
+                } elseif ($zone -and $zone.ZoneId -eq '3') {
+                    Add-Finding -Severity Low -Category 'Files' -Title "Script ($($f.Extension)) downloaded from the internet" -Evidence $ev -Mitre 'T1059' -Time $when
                 }
                 if ($f.Length -le 2MB) {
                     $content = ''

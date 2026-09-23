@@ -68,6 +68,8 @@ $before = $script:WD.Findings.Count
 [void](Invoke-WDCommandCheck -Text "powershell.exe -enc $b64" -Source 'selftest')
 $enc = $script:WD.Findings | Where-Object { $_.Source -eq 'selftest' -and $_.Detail -match 'DECODED COMMAND: Write-Output' }
 Assert-WD ($null -ne $enc) 'decoded command shown in finding detail'
+Assert-WD ($enc.Severity -eq 'Medium') 'harmless encoded command is Medium, not High'
+Assert-WD (Test-WDSelfPath 'C:\Users\X\Downloads\WindowsDetective-main (1)\lib\WD.Core.ps1') 'other extracted copy of the tool recognised'
 $script:WD.Findings.Clear(); $script:WD.FindingIndex.Clear(); $script:WD.Timeline.Clear()
 Assert-WD ((Get-WDFileInfo 'C:\Program Files\x\Update.exe"" \c').Exists -eq $false) 'malformed path handled without error'
 

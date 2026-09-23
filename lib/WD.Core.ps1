@@ -4,7 +4,7 @@
 #  WD-SELF-MARKER (lets the tool exclude its own activity from detections)
 # =============================================================================
 
-$script:WDVersion  = '1.2.0'
+$script:WDVersion  = '1.2.1'
 $script:WDToolName = 'Windows Detective'
 $script:WDBrand    = 'Powered by Bashar Salmo'
 
@@ -214,7 +214,7 @@ function Test-WDSelfPath {
     if (-not $Text) { return $false }
     $root = [string]$script:WD.Options.ToolRoot
     if ($root -and $Text.IndexOf($root, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
-    return ($Text -match '(?i)\\lib\\WD\.[A-Za-z]+\.ps1\b|\\WindowsDetective\.ps1\b|WDCase_')
+    return ($Text -match '(?i)\\lib\\WD\.[A-Za-z]+\.ps1\b|\\WindowsDetective\.ps1\b|\\Invoke-WDSelfTest\.ps1\b|\\Run-WindowsDetective\.bat\b|\\rules\\detection-data\.json\b|WDCase_')
 }
 
 function Get-WDExecutablePath {
