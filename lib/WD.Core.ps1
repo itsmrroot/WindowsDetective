@@ -4,7 +4,7 @@
 #  WD-SELF-MARKER (lets the tool exclude its own activity from detections)
 # =============================================================================
 
-$script:WDVersion  = '1.3.1'
+$script:WDVersion  = '1.3.2'
 $script:WDToolName = 'Windows Detective'
 $script:WDBrand    = 'Powered by Bashar Salmo'
 
@@ -216,13 +216,13 @@ function Import-WDAllowlist {
 }
 
 function Test-WDAllowlisted {
-    param([string]$Text)
+    param([string]$Text, [switch]$NoCount)
     if (-not $Text) { return $null }
     foreach ($a in $script:WD.Allowlist) {
         $hit = $false
         if ($a.Type -eq 'hash') { $hit = $Text.IndexOf($a.Pattern, [StringComparison]::OrdinalIgnoreCase) -ge 0 }
         else { $hit = $Text -like $a.Pattern }
-        if ($hit) { $a.Hits++; return $a }
+        if ($hit) { if (-not $NoCount) { $a.Hits++ }; return $a }
     }
     return $null
 }
@@ -232,7 +232,7 @@ function Add-WDTimeline {
     if ($script:WD.Timeline.Count -ge $script:WD.MaxTimeline) { return }
     $ts = ConvertTo-WDTimeString $Time
     if (-not $ts) { return }
-    if ($Severity -ne 'Info' -and $script:WD.Allowlist.Count -gt 0 -and (Test-WDAllowlisted "$Description`n$Detail")) { $Severity = 'Info' }
+    if ($Severity -ne 'Info' -and $script:WD.Allowlist.Count -gt 0 -and (Test-WDAllowlisted "$Description`n$Detail" -NoCount)) { $Severity = 'Info' }
     $script:WD.Timeline.Add([pscustomobject][ordered]@{
         TimeUtc     = $ts
         Severity    = $Severity
@@ -262,13 +262,41 @@ function Add-WDObserved {
 }
 
 # ----------------------------------------------------------------------------- path / file helpers
-# True when a path/text refers to this tool's own files (e.g. antivirus flagging the tool itself).
-function Test-WDSelfPath {
+# True when text points into this run's tool folder or case folder, or into a Windows Detective case folder.
+function Test-WDSelfText {
     param([string]$Text)
     if (-not $Text) { return $false }
-    $root = [string]$script:WD.Options.ToolRoot
-    if ($root -and $Text.IndexOf($root, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
-    return ($Text -match '(?i)\\lib\\WD\.[A-Za-z]+\.ps1\b|\\WindowsDetective\.ps1\b|\\Invoke-WDSelfTest\.ps1\b|\\Run-WindowsDetective\.bat\b|\\rules\\detection-data\.json\b|WDCase_')
+    if ($script:WD) {
+        foreach ($anchor in @([string]$script:WD.Options.ToolRoot, [string]$script:WD.CaseDir)) {
+            if ($anchor -and $Text.IndexOf($anchor, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+        }
+    }
+    return ($Text -match $script:WDCaseFolderRx)
+}
+
+# Weaker check used only to label (never hide) antivirus detections: text names one of the tool's files.
+function Test-WDSelfPath {
+    param([string]$Text)
+    if (Test-WDSelfText $Text) { return $true }
+    return ($Text -match $script:WDModulePathRx)
+}
+
+# A file on disk is the tool's own only if it sits in this run's folders, or it has a tool file name AND
+# its SHA-256 matches one of the files of the running copy (so renamed/modified files are still analysed).
+function Test-WDToolFile {
+    param([string]$Path, [string]$Sha256)
+    if (Test-WDSelfText $Path) { return $true }
+    if (-not $Sha256 -or $Path -notmatch $script:WDModulePathRx) { return $false }
+    if (-not $script:WDToolHashes) {
+        $script:WDToolHashes = @{}
+        $root = [string]$script:WD.Options.ToolRoot
+        if ($root) {
+            foreach ($f in @(Get-ChildItem -LiteralPath $root -Recurse -File -Include '*.ps1', '*.bat', '*.json' -ErrorAction SilentlyContinue)) {
+                try { $script:WDToolHashes[(Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256 -ErrorAction Stop).Hash] = $true } catch { }
+            }
+        }
+    }
+    return $script:WDToolHashes.ContainsKey($Sha256)
 }
 
 function Get-WDExecutablePath {
@@ -474,11 +502,17 @@ function Get-WDUserHives {
         } elseif ($script:WD.Options.LoadUserHives -and $script:WD.IsAdmin) {
             $nt = Join-Path $p.Path 'NTUSER.DAT'
             if (Test-Path -LiteralPath $nt) {
+                # Mount a copy: loading a hive can replay its transaction logs into the file (modifying evidence),
+                # and a hive that fails to unload would lock the user out of their profile until reboot.
+                $work = Join-Path $script:WD.FilesDir ("hive_work\" + ($p.Sid -replace '[^0-9A-Za-z-]', ''))
+                $copy = Join-Path $work 'NTUSER.DAT'
+                if (-not (Copy-WDLockedFile $nt $copy)) { Write-WDLog "Could not copy offline hive of $($p.User)" WARN; continue }
+                foreach ($log in @('NTUSER.DAT.LOG1', 'NTUSER.DAT.LOG2')) { [void](Copy-WDLockedFile (Join-Path $p.Path $log) (Join-Path $work $log)) }
                 $mount = 'WD_' + ($p.Sid -replace '[^0-9A-Za-z-]', '')
-                & reg.exe load "HKU\$mount" $nt 2>&1 | Out-Null
+                & reg.exe load "HKU\$mount" $copy 2>&1 | Out-Null
                 if ($LASTEXITCODE -eq 0) {
-                    Write-WDLog "Mounted offline hive for $($p.User)" INFO
-                    $list.Add([pscustomobject]@{ Sid = $p.Sid; User = $p.User; Root = "Registry::HKEY_USERS\$mount"; Profile = $p.Path; Temp = $true })
+                    Write-WDLog "Mounted a copy of the offline hive of $($p.User)" INFO
+                    $list.Add([pscustomobject]@{ Sid = $p.Sid; User = $p.User; Root = "Registry::HKEY_USERS\$mount"; Profile = $p.Path; Temp = $true; WorkDir = $work })
                 }
             }
         }
@@ -490,8 +524,16 @@ function Get-WDUserHives {
 function Dismount-WDUserHives {
     if (-not $script:WD -or -not $script:WD.UserHives) { return }
     foreach ($h in @($script:WD.UserHives | Where-Object { $_.Temp })) {
-        [gc]::Collect(); [gc]::WaitForPendingFinalizers()
-        & reg.exe unload ($h.Root -replace '^Registry::HKEY_USERS', 'HKU') 2>&1 | Out-Null
+        $key = $h.Root -replace '^Registry::HKEY_USERS', 'HKU'
+        $ok = $false
+        foreach ($attempt in 1..5) {
+            [gc]::Collect(); [gc]::WaitForPendingFinalizers()
+            & reg.exe unload $key 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            Start-Sleep -Milliseconds 500
+        }
+        if ($ok) { Remove-Item -LiteralPath $h.WorkDir -Recurse -Force -ErrorAction SilentlyContinue }
+        else { Write-WDLog "Could not unmount $key (a copy - the user's real hive is untouched). It is released at reboot, or run: reg unload $key" WARN }
     }
 }
 

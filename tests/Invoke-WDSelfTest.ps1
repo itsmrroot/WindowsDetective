@@ -7,7 +7,7 @@
 param([string]$ReportDir = '')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-foreach ($lib in @('WD.Core.ps1', 'WD.Rules.ps1', 'WD.Execution.ps1', 'WD.Report.ps1')) { . (Join-Path $root "lib/$lib") }
+foreach ($lib in @('WD.Core.ps1', 'WD.Rules.ps1', 'WD.Execution.ps1', 'WD.EventLogs.ps1', 'WD.Report.ps1')) { . (Join-Path $root "lib/$lib") }
 
 $script:pass = 0; $script:fail = 0
 function Assert-WD { param([bool]$Condition, [string]$Name) if ($Condition) { $script:pass++ } else { $script:fail++; Write-Host "FAIL: $Name" -ForegroundColor Red } }
@@ -41,7 +41,9 @@ foreach ($b in $benign) {
     $hits = @(Test-WDCommandLine $b | Where-Object { $_.Severity -ne 'Low' })
     Assert-WD ($hits.Count -eq 0) "benign stays quiet: $b -> $(($hits | ForEach-Object Id) -join ',')"
 }
-Assert-WD ((Test-WDCommandLine 'something WDCase_HOST_1 esentutl').Count -eq 0) 'self-exclusion marker'
+Assert-WD ((Test-WDCommandLine 'esentutl /y C:\Windows\System32\config\SAM /vss /d E:\Reports\WDCase_PC-01_20260923_093830\files\raw\SAM').Count -eq 0) 'own case-folder activity excluded'
+$b64sample = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes('Write-Output test'))
+Assert-WD ((Test-WDCommandLine "powershell -enc $b64sample # WindowsDetective.ps1 WDCase_ WD-SELF-MARKER").Count -gt 0) 'mentioning the tool name does not hide a command'
 
 # ---- helpers
 Assert-WD ((Get-WDExecutablePath '"C:\Program Files\App\app.exe" -x') -eq 'C:\Program Files\App\app.exe') 'quoted exe path'
@@ -64,7 +66,6 @@ foreach ($ok in @('C:\Windows\SysArm32\cmd.exe', 'C:\Windows\SysWOW64\WindowsPow
 }
 $b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes('Write-Output "hello from selftest"'))
 Assert-WD ((ConvertFrom-WDEncodedCommand "powershell.exe -NoProfile -EncodedCommand $b64") -eq 'Write-Output "hello from selftest"') 'encoded command is decoded'
-$before = $script:WD.Findings.Count
 [void](Invoke-WDCommandCheck -Text "powershell.exe -enc $b64" -Source 'selftest')
 $enc = $script:WD.Findings | Where-Object { $_.Source -eq 'selftest' -and $_.Detail -match 'DECODED COMMAND: Write-Output' }
 Assert-WD ($null -ne $enc) 'decoded command shown in finding detail'
@@ -72,6 +73,38 @@ Assert-WD ($enc.Severity -eq 'Medium') 'harmless encoded command is Medium, not 
 Assert-WD (Test-WDSelfPath 'C:\Users\X\Downloads\WindowsDetective-main (1)\lib\WD.Core.ps1') 'other extracted copy of the tool recognised'
 $script:WD.Findings.Clear(); $script:WD.FindingIndex.Clear(); $script:WD.Timeline.Clear()
 Assert-WD ((Get-WDFileInfo 'C:\Program Files\x\Update.exe"" \c').Exists -eq $false) 'malformed path handled without error'
+
+# ---- collector logic with simulated event logs (Get-WDEvents is replaced by a mock)
+$script:MockEvents = New-Object System.Collections.Generic.List[object]
+function Get-WDEvents { param([string]$LogName, [int[]]$Id, [int]$Max = 0, $Since = $null)
+    return @($script:MockEvents | Where-Object { $_.Log -eq $LogName -and (-not $Id -or $Id -contains $_.Id) }) }
+function Add-MockEvent { param($Log, $Id, $Time, $Data) $script:MockEvents.Add([pscustomobject]@{ Time = $Time; Id = $Id; Level = 4; Log = $Log; RecordId = 0; ProcessId = 0; Data = $Data }) }
+$script:WD.RawDir = Join-Path ([IO.Path]::GetTempPath()) 'WDCase_SELFTEST_raw'; New-Item -ItemType Directory -Path $script:WD.RawDir -Force | Out-Null
+$t0 = (Get-Date).AddDays(-3)
+foreach ($i in 1..12) { Add-MockEvent 'Security' 4625 $t0.AddMinutes($i) @{ TargetUserName = 'admin'; TargetDomainName = 'PC'; IpAddress = '203.0.113.5'; LogonType = '3' } }
+Add-MockEvent 'Security' 4624 $t0.AddMinutes(20) @{ TargetUserName = 'admin'; TargetDomainName = 'PC'; IpAddress = '203.0.113.5'; LogonType = '3'; AuthenticationPackageName = 'NTLM' }
+foreach ($i in 1..12) { Add-MockEvent 'Security' 4625 $t0.AddDays(-20).AddHours($i * 30) @{ TargetUserName = 'bob'; TargetDomainName = 'PC'; IpAddress = '10.0.0.9'; LogonType = '2' } }
+Add-MockEvent 'Security' 4624 $t0.AddDays(-1) @{ TargetUserName = 'eve'; TargetDomainName = 'PC'; IpAddress = '10.0.0.7'; LogonType = '3' }
+foreach ($i in 1..12) { Add-MockEvent 'Security' 4625 $t0.AddMinutes($i) @{ TargetUserName = 'eve'; TargetDomainName = 'PC'; IpAddress = '10.0.0.7'; LogonType = '3' } }
+Invoke-WDSecurityLog
+$bf = @($script:WD.Findings | Where-Object { $_.Title -eq 'Brute-force logon attempts from single source' })
+Assert-WD (@($bf | Where-Object { $_.Evidence -match '203\.0\.113\.5' }).Count -eq 1) 'burst of failures detected as brute force'
+Assert-WD (@($bf | Where-Object { $_.Evidence -match '10\.0\.0\.9' }).Count -eq 0) 'failures spread over weeks are not brute force'
+$crit = @($script:WD.Findings | Where-Object { $_.Severity -eq 'Critical' })
+Assert-WD ($crit.Count -eq 1 -and $crit[0].Evidence -match '203\.0\.113\.5') 'Critical only for success AFTER the attack (not for earlier success)'
+$script:WD.Findings.Clear(); $script:WD.FindingIndex.Clear(); $script:MockEvents.Clear()
+$dl = 'Microsoft-Windows-Windows Defender/Operational'
+Add-MockEvent $dl 5007 $t0 @{ 'New Value' = 'HKLM\SOFTWARE\Microsoft\Windows Defender\Features\TamperProtection = 0x1' }
+Add-MockEvent $dl 5007 $t0 @{ 'New Value' = 'HKLM\SOFTWARE\Microsoft\Windows Defender\Features\TamperProtection = 0x4' }
+Add-MockEvent $dl 5007 $t0 @{ 'New Value' = 'HKLM\SOFTWARE\Microsoft\Windows Defender\Real-Time Protection\DisableRealtimeMonitoring = 0x1' }
+Add-MockEvent $dl 5007 $t0 @{ 'New Value' = 'HKLM\SOFTWARE\Microsoft\Windows Defender\Spynet\SpynetReporting = 0x2' }
+Add-MockEvent $dl 5013 $t0 @{ Value = 'HKLM\SOFTWARE\Microsoft\Windows Defender\Real-Time Protection\DisableRealtimeMonitoring = 1 -> 0' }
+Invoke-WDDefenderLog
+$weak = @($script:WD.Findings | Where-Object { $_.Title -eq 'Defender protection setting weakened' } | ForEach-Object { $_.Evidence })
+Assert-WD ($weak.Count -eq 2 -and ($weak -join ' ') -match 'TamperProtection = 0x4' -and ($weak -join ' ') -match 'DisableRealtimeMonitoring = 0x1') 'Defender 5007 settings interpreted correctly'
+Assert-WD (@($script:WD.Findings | Where-Object { $_.Source -eq 'Defender 5013' -and $_.Severity -eq 'Low' }).Count -eq 1) 'Tamper Protection block of a non-weakening write is Low'
+$script:WD.Findings.Clear(); $script:WD.FindingIndex.Clear(); $script:MockEvents.Clear(); $script:WD.Timeline.Clear()
+Remove-Item -LiteralPath $script:WD.RawDir -Recurse -Force -ErrorAction SilentlyContinue
 
 # ---- grouping of repeated events and allowlist
 $script:WD.Findings.Clear(); $script:WD.FindingIndex.Clear()

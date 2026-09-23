@@ -82,7 +82,8 @@ function Invoke-WDSecurityLog {
         $ev = "$($row.User) type $type from $ip ($($d.WorkstationName)) via $($d.AuthenticationPackageName)/$($d.LogonProcessName)"
         $public = Test-WDPublicIp $ip
         if ($ip -and $ip -ne '-' -and $ip -ne '::1' -and $ip -ne '127.0.0.1') {
-            if (-not $successByIp.ContainsKey($ip)) { $successByIp[$ip] = $e.Time }
+            if (-not $successByIp.ContainsKey($ip)) { $successByIp[$ip] = New-Object System.Collections.Generic.List[datetime] }
+            $successByIp[$ip].Add($e.Time.ToUniversalTime())
             if ($public) { Add-WDObserved -Type Ips -Value $ip -Source "Logon source ($($row.User))" }
         }
         if ($type -in @(2, 7, 10, 11) -or ($type -eq 3 -and $ip -and $ip -notin @('-', '::1', '127.0.0.1'))) {
@@ -115,19 +116,31 @@ function Invoke-WDSecurityLog {
         $fRows.Add([pscustomobject][ordered]@{ TimeUtc = (ConvertTo-WDTimeString $e.Time); User = "$($d.TargetDomainName)\$($d.TargetUserName)"; LogonType = $d.LogonType; SourceIp = $d.IpAddress; Workstation = $d.WorkstationName; Status = $d.Status; SubStatus = $d.SubStatus; Process = $d.ProcessName })
     }
     Save-WDArtifact -Name 'FailedLogons' -Section 'Event Logs' -Data $fRows -Description 'Failed logons (4625)'
-    foreach ($g in ($fRows | Where-Object { $_.SourceIp -and $_.SourceIp -ne '-' } | Group-Object SourceIp)) {
-        $users = @($g.Group | Select-Object -ExpandProperty User -Unique)
-        $first = ($g.Group | Sort-Object TimeUtc | Select-Object -First 1).TimeUtc
-        $last = ($g.Group | Sort-Object TimeUtc | Select-Object -Last 1).TimeUtc
-        $ev = "$($g.Count) failures from $($g.Name) between $first and $last UTC against $($users.Count) account(s): $(($users | Select-Object -First 10) -join ', ')"
+    foreach ($g in ($fRows | Where-Object { $_.SourceIp -and $_.SourceIp -notin @('-', '::1', '127.0.0.1') } | Group-Object SourceIp)) {
         if (Test-WDPublicIp $g.Name) { Add-WDObserved -Type Ips -Value $g.Name -Source 'Failed logon source' }
-        if ($users.Count -ge 5 -and $g.Count -ge 10) {
-            Add-Finding -Severity High -Category 'Logons' -Title 'Password spraying from single source' -Evidence $ev -Mitre 'T1110.003' -Time $first -Source 'Security 4625'
-        } elseif ($g.Count -ge 10) {
-            Add-Finding -Severity High -Category 'Logons' -Title 'Brute-force logon attempts from single source' -Evidence $ev -Mitre 'T1110' -Time $first -Source 'Security 4625'
+        # Largest number of failures inside any 60-minute window (a user mistyping over a month is not brute force).
+        $times = @($g.Group | ForEach-Object { [datetime]::ParseExact($_.TimeUtc, 'yyyy-MM-dd HH:mm:ss', $null) } | Sort-Object)
+        $burst = 0; $burstStart = $times[0]; $burstEnd = $times[0]; $j = 0
+        for ($i = 0; $i -lt $times.Count; $i++) {
+            while (($times[$i] - $times[$j]).TotalMinutes -gt 60) { $j++ }
+            if (($i - $j + 1) -gt $burst) { $burst = $i - $j + 1; $burstStart = $times[$j]; $burstEnd = $times[$i] }
+        }
+        $users = @($g.Group | Select-Object -ExpandProperty User -Unique)
+        $ev = "$($g.Count) failures from $($g.Name) ($burst within 60 min, $($burstStart.ToString('yyyy-MM-dd HH:mm:ss')) - $($burstEnd.ToString('HH:mm:ss')) UTC) against $($users.Count) account(s): $(($users | Select-Object -First 10) -join ', ')"
+        if ($burst -ge 10 -and $users.Count -ge 5) {
+            Add-Finding -Severity High -Category 'Logons' -Title 'Password spraying from single source' -Evidence $ev -Mitre 'T1110.003' -Time $burstStart -Source 'Security 4625'
+        } elseif ($burst -ge 10) {
+            Add-Finding -Severity High -Category 'Logons' -Title 'Brute-force logon attempts from single source' -Evidence $ev -Mitre 'T1110' -Time $burstStart -Source 'Security 4625'
+        } elseif ($g.Count -ge 30) {
+            Add-Finding -Severity Medium -Category 'Logons' -Title 'Many failed logons from single source (slow brute force?)' -Evidence $ev -Mitre 'T1110' -Time $times[0] -Source 'Security 4625'
+            continue
         } else { continue }
+        # Critical only when the same source logged on successfully AFTER the attack started.
         if ($successByIp.ContainsKey($g.Name)) {
-            Add-Finding -Severity Critical -Category 'Logons' -Title 'Successful logon from an IP that was brute-forcing' -Evidence "$ev | successful logon at $(ConvertTo-WDTimeString $successByIp[$g.Name]) UTC" -Mitre 'T1110,T1078' -Time $successByIp[$g.Name] -Source 'Security 4624/4625'
+            $after = @($successByIp[$g.Name] | Where-Object { $_ -ge $burstStart } | Sort-Object)
+            if ($after.Count -gt 0) {
+                Add-Finding -Severity Critical -Category 'Logons' -Title 'Successful logon from an IP after it was brute-forcing' -Evidence "$ev | first successful logon afterwards at $($after[0].ToString('yyyy-MM-dd HH:mm:ss')) UTC" -Mitre 'T1110,T1078' -Time $after[0] -Source 'Security 4624/4625'
+            }
         }
     }
 
@@ -216,7 +229,7 @@ function Invoke-WDSecurityLog {
     foreach ($e in $pc) {
         $d = $e.Data
         $cmd = [string]$d.CommandLine
-        if ("$cmd $($d.NewProcessName)" -match $script:WDSelfExclusionRx) { continue }
+        if (Test-WDSelfText "$cmd $($d.NewProcessName)") { continue }
         $hits = 0
         if ($cmd) { $hits = Invoke-WDCommandCheck -Text $cmd -Source 'Security 4688' -Time $e.Time -Context "User $($d.SubjectUserName), parent $($d.ParentProcessName)" }
         Test-WDParentChild -ParentPath $d.ParentProcessName -ChildPath $d.NewProcessName -CommandLine $cmd -Source 'Security 4688' -Time $e.Time
@@ -286,19 +299,20 @@ function Invoke-WDPowerShellLogs {
         # PowerShell generates for the cmdlets it calls. Any process that ran this tool (now or in an
         # earlier run) is identified by a script block from the tool's files and skipped entirely.
         $toolPids = @{ [int]$PID = $true }
-        foreach ($e in $events) {
-            $d = $e.Data
-            if ((Test-WDSelfPath ([string]$d.Path)) -or ($toolRoot -and ([string]$d.Path).StartsWith($toolRoot, [StringComparison]::OrdinalIgnoreCase)) -or ([string]$d.ScriptBlockText) -match 'WD-SELF-MARKER') {
-                $toolPids[[int]$e.ProcessId] = $true
-            }
-        }
-        # Code PowerShell generates for CIM-based Windows cmdlets (Defender, NetTCPIP, ScheduledTasks, ...)
-        # and modules shipped in $PSHOME are part of the OS; skip every part of such script blocks.
         $osBlocks = @{}
         $osPsDir = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\"
         foreach ($e in $events) {
             $d = $e.Data
-            if (([string]$d.ScriptBlockText) -match '__cmdletization_|Microsoft\.PowerShell\.Cmdletization' -or ([string]$d.Path).StartsWith($osPsDir, [StringComparison]::OrdinalIgnoreCase)) {
+            $path = [string]$d.Path
+            $text = [string]$d.ScriptBlockText
+            # A process ran this tool if it loaded a script from this copy, or a tool module carrying the tool's marker.
+            if (($toolRoot -and $path.StartsWith($toolRoot, [StringComparison]::OrdinalIgnoreCase)) -or ($path -match $script:WDModulePathRx -and $text.Contains('WD-SELF-MARKER'))) {
+                $toolPids[[int]$e.ProcessId] = $true
+            }
+            # Code PowerShell generates for CIM-based Windows cmdlets (Defender, NetTCPIP, ScheduledTasks...) starts with a
+            # fixed header and has no file path; modules shipped in the admin-protected PSHOME are part of the OS.
+            if ((-not $path -and $text -match '^\s*#requires -version 3\.0\s+try\s*\{\s*Microsoft\.PowerShell\.Core\\Set-StrictMode -Off\s*\}\s*catch\s*\{\s*\}' -and $text.Contains('Microsoft.PowerShell.Cmdletization')) -or
+                ($path -and $path.StartsWith($osPsDir, [StringComparison]::OrdinalIgnoreCase))) {
                 $osBlocks[[string]$d.ScriptBlockId] = $true
             }
         }
@@ -327,7 +341,7 @@ function Invoke-WDPowerShellLogs {
         $engine = ''; $hostApp = ''
         if ($all -match 'EngineVersion=([\d\.]+)') { $engine = $Matches[1] }
         if ($all -match 'HostApplication=([^\r\n]*)') { $hostApp = $Matches[1] }
-        if ($hostApp -match $script:WDSelfExclusionRx) { continue }
+        if (Test-WDSelfText $hostApp) { continue }
         if ($engine -like '2.*') {
             Add-Finding -Severity Medium -Category 'Defense Evasion' -Title 'PowerShell 2.0 engine started (logging-evasion downgrade)' -Evidence $hostApp -Mitre 'T1562.010' -Time $e.Time -Source 'Windows PowerShell 400'
         }
@@ -369,7 +383,7 @@ function Invoke-WDDefenderLog {
         $d = $e.Data
         $threat = $d.'Threat Name'; $path = $d.Path; $proc = $d.'Process Name'; $user = $d.'Detection User'; $act = $d.'Action Name'
         if ($e.Id -in @(1006, 1015, 1116, 1117, 1118, 1119) -and (Test-WDSelfPath "$path $proc")) {
-            Add-Finding -Severity Info -Category 'Tool' -Title "Antivirus flagged Windows Detective's own files ($threat)" -Detail 'The detection points at this tool, not at the host. Not an indicator of compromise.' -Evidence $path -Time $e.Time -Source "Defender $($e.Id)"
+            Add-Finding -Severity Low -Category 'Tool' -Title "Antivirus flagged a file that appears to be part of Windows Detective ($threat)" -Detail 'The path names one of the tool''s files. Verify the file really is the tool (compare its hash with the release) - if so, this is not an indicator of compromise.' -Evidence $path -Time $e.Time -Source "Defender $($e.Id)"
             continue
         }
         $rows.Add([pscustomobject][ordered]@{ TimeUtc = (ConvertTo-WDTimeString $e.Time); EventId = $e.Id; Threat = $threat; Severity = $d.'Severity Name'; Path = $path; Process = $proc; User = $user; Action = $act; OldValue = $d.'Old Value'; NewValue = $d.'New Value' })
@@ -396,8 +410,19 @@ function Invoke-WDDefenderLog {
                 if ($nv -match '(?i)\\Exclusions\\(Paths|Processes|Extensions|IpAddresses)\\') {
                     $sev = 'Medium'; if ($nv -match '(?i)(\\users\\|\\temp\\|\\programdata\\|\\windows\\|[a-z]:\\?\s*=|\\Extensions\\\.?(exe|dll|ps1)\b|powershell|cmd\.exe)') { $sev = 'High' }
                     Add-Finding -Severity $sev -Category 'Defense Evasion' -Title 'Defender exclusion added' -Evidence $nv -Mitre 'T1562.001' -Time $e.Time -Source 'Defender 5007'
-                } elseif ($nv -match '(?i)(DisableRealtimeMonitoring|DisableAntiSpyware|DisableBehaviorMonitoring|DisableIOAVProtection|DisableScriptScanning|TamperProtection|SpynetReporting|SubmitSamplesConsent)\s*=\s*0x[1-9]') {
-                    Add-Finding -Severity High -Category 'Defense Evasion' -Title 'Defender protection setting weakened' -Evidence $nv -Mitre 'T1562.001' -Time $e.Time -Source 'Defender 5007'
+                } elseif ($nv -match '(?i)\\(Disable[A-Za-z]+|TamperProtection|SpynetReporting|MAPSReporting|SubmitSamplesConsent)\s*=\s*(0x[0-9a-f]+|\d+)\b') {
+                    $setting = $Matches[1]; $raw = $Matches[2]
+                    $val = if ($raw -match '^0x') { [Convert]::ToInt64($raw.Substring(2), 16) } else { [int64]$raw }
+                    # Weakening depends on the setting: Disable*=non-zero; Tamper Protection 0/4 = off (5 = on);
+                    # cloud protection 0 = off; SubmitSamplesConsent 2 = never send.
+                    $weak = $false
+                    if ($setting -match '^(?i)Disable') { $weak = ($val -ne 0) }
+                    elseif ($setting -match '^(?i)TamperProtection$') { $weak = ($val -in @(0, 4)) }
+                    elseif ($setting -match '^(?i)(SpynetReporting|MAPSReporting)$') { $weak = ($val -eq 0) }
+                    elseif ($setting -match '^(?i)SubmitSamplesConsent$') { $weak = ($val -eq 2) }
+                    if ($weak) {
+                        Add-Finding -Severity High -Category 'Defense Evasion' -Title 'Defender protection setting weakened' -Evidence $nv -Mitre 'T1562.001' -Time $e.Time -Source 'Defender 5007'
+                    }
                 }
             }
         }
@@ -413,7 +438,7 @@ function Invoke-WDSysmonLog {
     $rows = New-Object System.Collections.Generic.List[object]
     foreach ($e in (Get-WDEvents -LogName $log -Id 1 -Max ($max * 4))) {
         $d = $e.Data
-        if ("$($d.CommandLine) $($d.ParentCommandLine)" -match $script:WDSelfExclusionRx) { continue }
+        if (Test-WDSelfText "$($d.CommandLine) $($d.ParentCommandLine)") { continue }
         $hits = Invoke-WDCommandCheck -Text $d.CommandLine -Source 'Sysmon 1' -Time $e.Time -Context "User $($d.User), parent $($d.ParentImage)"
         Test-WDParentChild -ParentPath $d.ParentImage -ChildPath $d.Image -CommandLine $d.CommandLine -Source 'Sysmon 1' -Time $e.Time
         if ($d.Hashes -match 'SHA256=([0-9A-Fa-f]{64})') { Add-WDObserved -Type Hashes -Value $Matches[1] -Source "Sysmon: $($d.Image)" }

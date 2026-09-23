@@ -49,11 +49,11 @@ function Invoke-WDFileSystemCollector {
             Where-Object { $_.Name -match $script:WDInterestingExtRx -and ($_.LastWriteTime -ge $script:WD.Since -or $_.CreationTime -ge $script:WD.Since) })
         foreach ($f in $items) {
             if ($rows.Count -ge $max) { break }
-            if ($seen.ContainsKey($f.FullName) -or $f.FullName -match $script:WDSelfExclusionRx -or (Test-WDSelfPath $f.FullName)) { continue }
+            if ($seen.ContainsKey($f.FullName) -or (Test-WDSelfText $f.FullName)) { continue }
             $seen[$f.FullName] = $true
             if ($f.FullName -match '(?i)\\AppData\\Local\\(Microsoft\\(Edge|Teams|OneDrive|WindowsApps)|Google\\Chrome|Mozilla|Packages|Programs\\Microsoft VS Code|JetBrains|pip|npm-cache|NuGet)\\' -and $f.Extension -match '(?i)^\.(dll|js|lnk)$') { continue }
             $info = Get-WDFileInfo $f.FullName
-            if ($info.IsAppAlias) { continue }
+            if ($info.IsAppAlias -or (Test-WDToolFile $f.FullName $info.SHA256)) { continue }
             $zone = Get-WDZoneInfo $f.FullName
             $risk = Get-WDPathRisk $f.FullName
             $row = [pscustomobject][ordered]@{

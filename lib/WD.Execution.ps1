@@ -10,7 +10,7 @@
 function Test-WDExecutedPath {
     # Common checks for any "this program ran" artifact.
     param([string]$Path, [string]$Source, $Time = $null, [string]$Extra = '', [switch]$NoPathCheck)
-    if (-not $Path -or $Path -match $script:WDSelfExclusionRx) { return }
+    if (-not $Path -or (Test-WDSelfText $Path)) { return }
     $recent = ($null -eq $Time) -or (($Time -is [datetime]) -and $Time -ge $script:WD.Since.ToUniversalTime())
     $tool = Get-WDToolMatch $Path
     if ($tool) {

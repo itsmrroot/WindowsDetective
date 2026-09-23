@@ -27,7 +27,7 @@ function Add-WDAutorun {
         LastWriteUtc = (ConvertTo-WDTimeString $KeyTime)
     }
     $script:WD.Autoruns.Add($row)
-    if ($Command -match $script:WDSelfExclusionRx) { return }
+    if (Test-WDSelfText $Command) { return }
 
     $src = "$Category | $Location | $Name"
     $ev = "[$Category] $Location -> $Name = $Command"
@@ -81,7 +81,7 @@ function Invoke-WDRunKeys {
         'SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnceEx', 'SOFTWARE\Microsoft\Windows\CurrentVersion\RunServices',
         'SOFTWARE\Microsoft\Windows\CurrentVersion\RunServicesOnce', 'SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer\Run',
         'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run', 'SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\RunOnce',
-        'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows\Run', 'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\Install\Software\Microsoft\Windows\CurrentVersion\Run'
+        'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\Install\Software\Microsoft\Windows\CurrentVersion\Run'
     )
     $roots = @([pscustomobject]@{ Root = 'HKLM:'; User = 'SYSTEM (HKLM)' })
     foreach ($h in (Get-WDUserHives)) { $roots += [pscustomobject]@{ Root = $h.Root; User = $h.User } }
@@ -91,7 +91,6 @@ function Invoke-WDRunKeys {
             if (-not (Test-Path -LiteralPath $full)) { continue }
             $lw = Get-WDRegKeyLastWrite $full
             foreach ($v in (Get-WDRegValues $full)) {
-                if ($k -match 'NT\\CurrentVersion\\Windows\\Run$' -and $v.Name -notmatch '^(Run|Load)$') { continue }
                 if (-not $v.Value) { continue }
                 Add-WDAutorun -Category 'Run key' -Location $full.Replace('Registry::', '') -Name $v.Name -Command $v.Value -User $r.User -KeyTime $lw -InterpreterSeverity 'High'
             }

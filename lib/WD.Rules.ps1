@@ -9,7 +9,11 @@
 # =============================================================================
 
 # Text containing these markers belongs to this tool (or its case output) and is never flagged.
-$script:WDSelfExclusionRx = '(?i)(WindowsDetective\.ps1|WDCase_|WD-SELF-MARKER|Run-WindowsDetective\.bat)'
+# Case folders are named WDCase_<HOST>_<yyyyMMdd>_<HHmmss>. Only text that points into this run's tool/case
+# folder or into such a case folder is treated as the tool's own activity (see Test-WDSelfText) - a bare
+# keyword would let an attacker hide a command by simply mentioning the tool's name.
+$script:WDCaseFolderRx = '(?i)\\WDCase_[A-Za-z0-9._-]+_\d{8}_\d{6}(\\|\.zip\b)'
+$script:WDModulePathRx = '(?i)\\lib\\WD\.(Core|Rules|System|Processes|Network|Persistence|Execution|EventLogs|FileSystem|Security|Evidence|Report)\.ps1\b|\\WindowsDetective\.ps1\b|\\Run-WindowsDetective\.bat\b|\\tests\\Invoke-WDSelfTest\.ps1\b|\\rules\\detection-data\.json\b'
 
 # Detection data (command-line rules, tool / RMM / driver intel) lives in rules\detection-data.json.
 # Keeping attack patterns out of the PowerShell source stops AMSI from blocking the tool itself.
@@ -41,7 +45,7 @@ function Test-WDCommandLine {
     param([string]$Text)
     $hits = New-Object System.Collections.Generic.List[object]
     if ([string]::IsNullOrWhiteSpace($Text)) { return $hits }
-    if ($Text -match $script:WDSelfExclusionRx) { return $hits }
+    if (Test-WDSelfText $Text) { return $hits }
     foreach ($r in $script:WDCommandRules) { if ($r.Regex.IsMatch($Text)) { $hits.Add($r) } }
     return $hits
 }
@@ -94,7 +98,7 @@ function Test-WDParentChild {
     param([string]$ParentPath, [string]$ChildPath, [string]$CommandLine, [string]$Source, $Time = $null)
     if (-not $ParentPath -or -not $ChildPath) { return }
     $ev = "Parent: $ParentPath | Child: $ChildPath | $CommandLine"
-    if ($ev -match $script:WDSelfExclusionRx) { return }
+    if (Test-WDSelfText $ev) { return }
     if ($ParentPath -match $script:WDOfficeRx -and $ChildPath -match $script:WDShellRx) {
         Add-Finding -Severity High -Category 'Execution' -Title 'Office / document reader spawned a shell or LOLBin' -Detail "Classic malicious-document behaviour ($Source)." -Evidence $ev -Mitre 'T1566.001,T1204.002' -Time $Time -Source $Source
     }

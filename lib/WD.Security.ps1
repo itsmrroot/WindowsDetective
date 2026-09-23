@@ -70,7 +70,7 @@ function Invoke-WDDefenderStatus {
         })
         foreach ($d in $det) {
             if (Test-WDSelfPath $d.Resources) {
-                Add-Finding -Severity Info -Category 'Tool' -Title "Antivirus flagged Windows Detective's own files ($($d.Threat))" -Detail 'The detection points at this tool, not at the host. Not an indicator of compromise.' -Evidence $d.Resources -Time $d.DetectedUtc
+                Add-Finding -Severity Low -Category 'Tool' -Title "Antivirus flagged a file that appears to be part of Windows Detective ($($d.Threat))" -Detail 'The path names one of the tool''s files. Verify the file really is the tool (compare its hash with the release) - if so, this is not an indicator of compromise.' -Evidence $d.Resources -Time $d.DetectedUtc
                 continue
             }
             $sev = 'High'; if ($d.ActionSuccess -eq $false) { $sev = 'Critical' }
