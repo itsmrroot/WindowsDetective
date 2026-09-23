@@ -214,7 +214,7 @@ WDCase_<HOST>_<timestamp>.zip  +  .zip.sha256
 |---|---|
 | **IOCs** | One indicator per line in `iocs\hashes.txt`, `iocs\ips.txt` or `iocs\domains.txt`, with an optional `, description`. Harmless EICAR test hashes are included so you can check matching works. |
 | **YARA** | Drop `yara64.exe` into `tools\` and your `.yar` files into `rules\`. Starter rules are included. |
-| **Custom rules** | Add one line to `lib\WD.Rules.ps1`: `Id, Severity, MITRE, Title, Regex`. |
+| **Custom rules** | Add an entry to `commandRules` in `rules\detection-data.json` (`id`, `severity`, `mitre`, `title`, `pattern`). Tool, RMM and vulnerable-driver lists live in the same file. |
 
 Optional binaries (`winpmem`, `yara64`) are covered in [tools/README.md](tools/README.md).
 
@@ -245,6 +245,21 @@ The self-test checks that the rules compile, that common benign command lines do
 
 ---
 
+## 🛠️ Troubleshooting
+
+<details>
+<summary><b>"This script contains malicious content and has been blocked by your antivirus software"</b></summary>
+
+A detection tool has to know what attacks look like, so antivirus can mistake it for one.
+Windows Detective keeps all attack patterns in `rules\detection-data.json` (a data file AMSI doesn't scan) rather than in the PowerShell code. If a module is still blocked, the tool now **stops with a clear message** instead of producing a misleading report.
+
+- Make sure every file in `lib\` and `rules\` is present. Antivirus may have quarantined one, so re-download if needed.
+- If your EDR still blocks it, add a temporary exclusion for the tool folder for the duration of the investigation (standard practice for IR tooling).
+- When Defender's history contains a detection of the tool's own files, the report lists it as **Info (category "Tool")**, not as malware on the host.
+</details>
+
+---
+
 <details>
 <summary><b>🗂️ Project layout</b></summary>
 
@@ -253,7 +268,7 @@ WindowsDetective.ps1        entry point / orchestration
 Run-WindowsDetective.bat    double-click launcher (self-elevates)
 lib/
 ├── WD.Core.ps1             context, findings, timeline, file/registry/event helpers
-├── WD.Rules.ps1            detection rules, tool/RMM/BYOVD intel, masquerading, MITRE names
+├── WD.Rules.ps1            rule engine, masquerading, parent/child checks, MITRE names
 ├── WD.System.ps1           host profile, patches, software, accounts
 ├── WD.Processes.ps1        live process analysis
 ├── WD.Network.ps1          connections, DNS, hosts, proxy, portproxy, firewall, RDP
@@ -264,7 +279,10 @@ lib/
 ├── WD.Security.ps1         Defender, drivers (BYOVD), hardening controls
 ├── WD.Evidence.ps1         IOC matching, YARA, memory, EVTX export, raw artifacts, manifest
 └── WD.Report.ps1           HTML / JSON / CSV reporting
-iocs/  rules/  tools/  tests/
+rules/
+├── detection-data.json     command-line rules, offensive tools, RMM tools, vulnerable drivers
+└── *.yar                   YARA rules
+iocs/  tools/  tests/
 ```
 
 </details>

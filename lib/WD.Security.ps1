@@ -69,6 +69,10 @@ function Invoke-WDDefenderStatus {
             [pscustomobject][ordered]@{ DetectedUtc = (ConvertTo-WDTimeString $_.InitialDetectionTime); Threat = $threats[[string]$_.ThreatID]; Resources = (@($_.Resources) -join ' ; '); Process = $_.ProcessName; User = $_.DomainUser; ActionSuccess = $_.ActionSuccess; Remediated = (ConvertTo-WDTimeString $_.RemediationTime) }
         })
         foreach ($d in $det) {
+            if (Test-WDSelfPath $d.Resources) {
+                Add-Finding -Severity Info -Category 'Tool' -Title "Antivirus flagged Windows Detective's own files ($($d.Threat))" -Detail 'The detection points at this tool, not at the host. Not an indicator of compromise.' -Evidence $d.Resources -Time $d.DetectedUtc
+                continue
+            }
             $sev = 'High'; if ($d.ActionSuccess -eq $false) { $sev = 'Critical' }
             Add-Finding -Severity $sev -Category 'Malware' -Title "Defender detection history: $($d.Threat)" -Evidence "$($d.Resources) | process $($d.Process) | user $($d.User) | remediated $($d.Remediated)" -Mitre 'T1204.002' -Time $d.DetectedUtc
             foreach ($r in ($d.Resources -split ' ; ')) { if ($r -match '^file:_(.+)$') { $script:WD.SuspiciousFiles[$Matches[1]] = 'Defender history' } }
@@ -128,7 +132,7 @@ function Invoke-WDHardening {
     if ($latfp -eq 1) { Add-Finding -Severity Medium -Category 'Lateral Movement' -Title 'LocalAccountTokenFilterPolicy=1 (remote admin with local accounts / pass-the-hash enabled)' -Evidence "$sys LocalAccountTokenFilterPolicy=1" -Mitre 'T1550.002' }
 
     $wd = Get-WDRegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest' 'UseLogonCredential'; & $add 'WDigest UseLogonCredential' $wd '0 / not set'
-    if ($wd -eq 1) { Add-Finding -Severity High -Category 'Credential Access' -Title 'WDigest cleartext credential caching enabled' -Detail 'Attackers set this so Mimikatz can read plaintext passwords from LSASS.' -Evidence 'UseLogonCredential=1' -Mitre 'T1003.001,T1112' }
+    if ($wd -eq 1) { Add-Finding -Severity High -Category 'Credential Access' -Title 'WDigest cleartext credential caching enabled' -Detail 'Attackers set this so credential dumpers can read plaintext passwords from LSASS.' -Evidence 'UseLogonCredential=1' -Mitre 'T1003.001,T1112' }
     $ppl = Get-WDRegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' 'RunAsPPL'; & $add 'LSA protection (RunAsPPL)' $ppl '1 or 2'
     if ($ppl -notin @(1, 2)) { Add-Finding -Severity Info -Category 'Posture' -Title 'LSA protection (RunAsPPL) not enabled' -Evidence "RunAsPPL=$ppl" -Mitre 'T1003.001' }
     $dra = Get-WDRegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa' 'DisableRestrictedAdmin'; & $add 'DisableRestrictedAdmin' $dra 'not set'

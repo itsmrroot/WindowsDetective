@@ -39,8 +39,8 @@ function Invoke-WDIocCollector {
     if ($needMd5 -or $needSha1) {
         foreach ($info in @($script:WD.FileCache.Values)) {
             if (-not $info.Exists -or $info.Size -gt $script:WD.Options.MaxHashBytes) { continue }
-            if ($needMd5) { try { Add-WDObserved -Type Hashes -Value (Get-FileHash -LiteralPath $info.Path -Algorithm MD5).Hash -Source $info.Path } catch { } }
-            if ($needSha1) { try { Add-WDObserved -Type Hashes -Value (Get-FileHash -LiteralPath $info.Path -Algorithm SHA1).Hash -Source $info.Path } catch { } }
+            if ($needMd5) { try { Add-WDObserved -Type Hashes -Value (Get-FileHash -LiteralPath $info.Path -Algorithm MD5 -ErrorAction Stop).Hash -Source $info.Path } catch { } }
+            if ($needSha1) { try { Add-WDObserved -Type Hashes -Value (Get-FileHash -LiteralPath $info.Path -Algorithm SHA1 -ErrorAction Stop).Hash -Source $info.Path } catch { } }
         }
     }
 
@@ -190,7 +190,7 @@ function Write-WDManifest {
     foreach ($f in @(Get-ChildItem -LiteralPath $script:WD.CaseDir -Recurse -File -Force -ErrorAction SilentlyContinue)) {
         if ($f.Name -eq 'manifest.sha256.csv') { continue }
         $h = ''
-        try { $h = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash } catch { }
+        try { $h = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256 -ErrorAction Stop).Hash } catch { }
         $rows.Add([pscustomobject][ordered]@{ File = $f.FullName.Substring($script:WD.CaseDir.Length + 1); Bytes = $f.Length; SHA256 = $h; ModifiedUtc = (ConvertTo-WDTimeString $f.LastWriteTime) })
     }
     $rows | Export-Csv -LiteralPath (Join-Path $script:WD.CaseDir 'manifest.sha256.csv') -NoTypeInformation -Encoding UTF8

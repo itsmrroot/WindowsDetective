@@ -4,7 +4,7 @@
 #  WD-SELF-MARKER (lets the tool exclude its own activity from detections)
 # =============================================================================
 
-$script:WDVersion  = '1.0.0'
+$script:WDVersion  = '1.1.0'
 $script:WDToolName = 'Windows Detective'
 $script:WDBrand    = 'Powered by Bashar Salmo'
 
@@ -208,6 +208,15 @@ function Add-WDObserved {
 }
 
 # ----------------------------------------------------------------------------- path / file helpers
+# True when a path/text refers to this tool's own files (e.g. antivirus flagging the tool itself).
+function Test-WDSelfPath {
+    param([string]$Text)
+    if (-not $Text) { return $false }
+    $root = [string]$script:WD.Options.ToolRoot
+    if ($root -and $Text.IndexOf($root, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+    return ($Text -match '(?i)\\lib\\WD\.[A-Za-z]+\.ps1\b|\\WindowsDetective\.ps1\b|WDCase_')
+}
+
 function Get-WDExecutablePath {
     param([string]$CommandLine)
     if ([string]::IsNullOrWhiteSpace($CommandLine)) { return '' }

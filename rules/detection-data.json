@@ -1,0 +1,954 @@
+{
+  "_comment": "Windows Detective detection data - Powered by Bashar Salmo. Kept out of the PowerShell code so antivirus AMSI scanning does not block the tool. Patterns are .NET regexes (case-insensitive).",
+  "commandRules": [
+    {
+      "id": "CMD-001",
+      "severity": "High",
+      "mitre": "T1059.001,T1027",
+      "title": "Encoded PowerShell command",
+      "pattern": "(powershell|pwsh)(\\.exe)?[\"']?\\s(.*\\s)?[-/]e[a-z]*\\s+[\"']?[A-Za-z0-9+/]{20,}={0,2}"
+    },
+    {
+      "id": "CMD-002",
+      "severity": "High",
+      "mitre": "T1059.001,T1105",
+      "title": "PowerShell download-and-execute cradle",
+      "pattern": "\\b(iex|invoke-expression)\\b.{0,300}(downloadstring|downloaddata|net\\.webclient|invoke-webrequest|invoke-restmethod|\\biwr\\b|\\birm\\b|start-bitstransfer)|(downloadstring|invoke-webrequest|invoke-restmethod|\\biwr\\b|\\birm\\b|net\\.webclient).{0,300}\\|\\s*(iex|invoke-expression)\\b"
+    },
+    {
+      "id": "CMD-003",
+      "severity": "Medium",
+      "mitre": "T1105",
+      "title": "PowerShell web download",
+      "pattern": "(downloadstring|downloadfile|downloaddata|net\\.webclient|start-bitstransfer|invoke-webrequest\\s|invoke-restmethod\\s|\\biwr\\s+(-uri\\s+)?[\"']?https?:|\\birm\\s+(-uri\\s+)?[\"']?https?:)"
+    },
+    {
+      "id": "CMD-004",
+      "severity": "Medium",
+      "mitre": "T1027,T1140",
+      "title": "Base64 decoding in command or script",
+      "pattern": "frombase64string|\\[convert\\]::frombase64"
+    },
+    {
+      "id": "CMD-005",
+      "severity": "Medium",
+      "mitre": "T1564.003",
+      "title": "Hidden PowerShell window",
+      "pattern": "(powershell|pwsh)(\\.exe)?[\"']?\\s(.*\\s)?[-/]w[a-z]*\\s+[\"']?(h[a-z]*|1)\\b"
+    },
+    {
+      "id": "CMD-006",
+      "severity": "Low",
+      "mitre": "T1059.001",
+      "title": "PowerShell execution policy bypass",
+      "pattern": "(powershell|pwsh)(\\.exe)?[\"']?\\s.*[-/]e[a-z]*\\s+[\"']?(bypass|unrestricted)\\b"
+    },
+    {
+      "id": "CMD-007",
+      "severity": "High",
+      "mitre": "T1105,T1140",
+      "title": "Certutil used to download or decode files",
+      "pattern": "certutil(\\.exe)?[\"']?\\s.*[-/](urlcache|verifyctl|decode|decodehex|encode)\\b"
+    },
+    {
+      "id": "CMD-008",
+      "severity": "High",
+      "mitre": "T1197",
+      "title": "BITSAdmin transfer / notify-command abuse",
+      "pattern": "bitsadmin(\\.exe)?[\"']?\\s.*/(transfer|addfile|setnotifycmdline|download)\\b"
+    },
+    {
+      "id": "CMD-009",
+      "severity": "High",
+      "mitre": "T1218.005",
+      "title": "Mshta executing remote, inline or HTA script",
+      "pattern": "mshta(\\.exe)?[\"']?\\s+.*(https?:|javascript:|vbscript:|\\.hta\\b)"
+    },
+    {
+      "id": "CMD-010",
+      "severity": "High",
+      "mitre": "T1218.010",
+      "title": "Regsvr32 scriptlet execution (Squiblydoo)",
+      "pattern": "regsvr32(\\.exe)?[\"']?\\s.*[-/]i:.*(https?:|scrobj|\\.sct)|regsvr32.*scrobj\\.dll"
+    },
+    {
+      "id": "CMD-011",
+      "severity": "High",
+      "mitre": "T1218.011",
+      "title": "Rundll32 proxy execution of script / URL / INF",
+      "pattern": "rundll32(\\.exe)?[\"']?\\s.*(javascript:|vbscript:|mshtml(\\.dll)?,\\s*#?runhtmlapplication|url\\.dll,\\s*(openurl|fileprotocolhandler)|advpack\\.dll,\\s*(registerocx|launchinfsection)|ieadvpack\\.dll|shell32\\.dll,\\s*shellexec_rundll|pcwutl\\.dll|zipfldr\\.dll,\\s*routethecall|setupapi\\.dll,\\s*installhinfsection|syssetup\\.dll)"
+    },
+    {
+      "id": "CMD-012",
+      "severity": "High",
+      "mitre": "T1218.011",
+      "title": "Rundll32 loading DLL from user-writable path",
+      "pattern": "rundll32(\\.exe)?[\"']?\\s+[\"']?[a-z]:\\\\(users|programdata|windows\\\\temp|perflogs|\\$recycle)"
+    },
+    {
+      "id": "CMD-013",
+      "severity": "Critical",
+      "mitre": "T1003.001",
+      "title": "LSASS memory dump via comsvcs.dll MiniDump",
+      "pattern": "comsvcs(\\.dll)?[\"']?[,\\s]+#?\\s*(minidump|24)\\b"
+    },
+    {
+      "id": "CMD-014",
+      "severity": "Critical",
+      "mitre": "T1003.001",
+      "title": "LSASS process dump tooling",
+      "pattern": "(procdump(64)?|dumpert|nanodump|sqldumper|createdump|rdrleakdiag|handlekatz|ppldump).{0,200}lsass|[-/]ma\\s+lsass|lsass.{0,60}\\.dmp\\b"
+    },
+    {
+      "id": "CMD-015",
+      "severity": "Critical",
+      "mitre": "T1003",
+      "title": "Mimikatz / credential theft keywords",
+      "pattern": "(sekur[l]sa::|lsadu[m]p::|kerbero[s]::(golden|ptt|list)|privilege::[d]ebug|token::[e]levate|crypto::[c]api|dpap[i]::|invoke-mimi[k]atz|\\bmimi[k]atz\\b|safety[k]atz|sharp[k]atz|pypy[k]atz|\\blaza[g]ne\\b)"
+    },
+    {
+      "id": "CMD-016",
+      "severity": "Critical",
+      "mitre": "T1003.002",
+      "title": "Registry hive dump (SAM / SECURITY / SYSTEM)",
+      "pattern": "reg(\\.exe)?[\"']?\\s+(save|export)\\s+[\"']?(hklm|hkey_local_machine)\\\\(sam|security|system)\\b"
+    },
+    {
+      "id": "CMD-017",
+      "severity": "High",
+      "mitre": "T1003.003",
+      "title": "NTDS / shadow-copy credential access",
+      "pattern": "ntdsutil.*(ifm|create\\s+full|snapshot)|vssadmin(\\.exe)?\\s+create\\s+shadow|diskshadow(\\.exe)?\\s+/s|esentutl(\\.exe)?\\s.*[/-]vss.*\\\\(ntds\\.dit|sam|security|system)\\b|\\\\ntds\\.dit\\b"
+    },
+    {
+      "id": "CMD-018",
+      "severity": "Critical",
+      "mitre": "T1490",
+      "title": "Backup / shadow-copy destruction (ransomware precursor)",
+      "pattern": "vssadmin(\\.exe)?[\"']?\\s+(delete\\s+shadows|resize\\s+shadowstorage)|wmic(\\.exe)?[\"']?\\s+shadowcopy\\s+delete|win32_shadowcopy.{0,80}(delete|remove-ciminstance)|wbadmin(\\.exe)?[\"']?\\s+delete\\s+(catalog|systemstatebackup|backup)|bcdedit(\\.exe)?[\"']?\\s.*(recoveryenabled\\s+(no|off)|bootstatuspolicy\\s+ignoreallfailures)"
+    },
+    {
+      "id": "CMD-019",
+      "severity": "Critical",
+      "mitre": "T1070.001",
+      "title": "Event log clearing",
+      "pattern": "wevtutil(\\.exe)?[\"']?\\s+(cl|clear-log)\\b|clear-eventlog|remove-eventlog|globalsession\\.clearlog"
+    },
+    {
+      "id": "CMD-020",
+      "severity": "High",
+      "mitre": "T1562.001",
+      "title": "Microsoft Defender tampering",
+      "pattern": "set-mppreference.*-disable\\w+\\s+(\\$true|1)|add-mppreference.*-exclusion|disableantispyware|disablerealtimemonitoring|\\bsc(\\.exe)?\\s+(stop|delete|config)\\s+[\"']?(windefend|sense|wdboot|wdfilter|wdnisdrv|wdnissvc)\\b|mpcmdrun(\\.exe)?.*-removedefinitions"
+    },
+    {
+      "id": "CMD-021",
+      "severity": "High",
+      "mitre": "T1562.004",
+      "title": "Windows Firewall disabled",
+      "pattern": "netsh(\\.exe)?.*(firewall\\s+set\\s+opmode\\s+(mode=)?disable|advfirewall\\s+set\\s+\\w+\\s+state\\s+off)|set-netfirewallprofile.*-enabled\\s+(\\$?false|0)"
+    },
+    {
+      "id": "CMD-022",
+      "severity": "High",
+      "mitre": "T1090",
+      "title": "Netsh port proxy / port forwarding",
+      "pattern": "netsh(\\.exe)?.*interface\\s+portproxy\\s+(add|set)"
+    },
+    {
+      "id": "CMD-023",
+      "severity": "Low",
+      "mitre": "T1082,T1087,T1016",
+      "title": "Host / domain reconnaissance command",
+      "pattern": "\\bwhoami(\\.exe)?\\s+/(all|priv|groups)|\\bnltest(\\.exe)?\\s+/(domain_trusts|dclist|dsgetdc)|\\bnet1?(\\.exe)?\\s+(group|localgroup)\\s+[\"']?(domain admins|administrators|enterprise admins|domain computers)|\\bnet1?(\\.exe)?\\s+(view|session)\\b|\\bquser\\b|\\bquery\\s+(user|session)\\b|\\bnetstat(\\.exe)?\\s+-an|\\bipconfig(\\.exe)?\\s+/all|\\bsysteminfo(\\.exe)?\\b|\\bcmdkey(\\.exe)?\\s+/list|get-aduser\\s+-filter\\s+\\*|get-adcomputer\\s+-filter\\s+\\*"
+    },
+    {
+      "id": "CMD-024",
+      "severity": "High",
+      "mitre": "T1087.002,T1482,T1558.003",
+      "title": "Active Directory attack tooling",
+      "pattern": "\\b(adfind|sharphound|invoke-bloodhound|powerview|get-domaintrust|invoke-userhunter|rubeus|kerberoast|asreproast|seatbelt|sharpup|winpeas|powerup|invoke-allchecks|certify|certipy|whisker|sharpdpapi|sharpchrome|kerbrute)\\b"
+    },
+    {
+      "id": "CMD-025",
+      "severity": "Medium",
+      "mitre": "T1021.002,T1021.006,T1047",
+      "title": "Remote execution / lateral movement command",
+      "pattern": "\\b(psexec(64)?|paexec|remcom|csexec)(\\.exe)?\\s|wmic(\\.exe)?[\"']?\\s+/node:|invoke-command\\s+.*-computername|enter-pssession\\s|winrs(\\.exe)?\\s+-r:|invoke-wmimethod.*-computername|invoke-(smbexec|wmiexec|psexec)"
+    },
+    {
+      "id": "CMD-026",
+      "severity": "Medium",
+      "mitre": "T1053.005",
+      "title": "Scheduled task created from command line",
+      "pattern": "schtasks(\\.exe)?[\"']?\\s+/create|register-scheduledtask\\s"
+    },
+    {
+      "id": "CMD-027",
+      "severity": "Medium",
+      "mitre": "T1543.003",
+      "title": "Service created from command line",
+      "pattern": "\\bsc(\\.exe)?[\"']?\\s+(\\\\\\\\\\S+\\s+)?create\\s|\\bnew-service\\s"
+    },
+    {
+      "id": "CMD-028",
+      "severity": "High",
+      "mitre": "T1547.001,T1546.012",
+      "title": "Autostart registry key modified from command line",
+      "pattern": "(reg(\\.exe)?[\"']?\\s+add|set-itemproperty|new-itemproperty).*\\\\(currentversion\\\\(run|runonce|runonceex|policies\\\\explorer\\\\run|winlogon)|image file execution options|silentprocessexit|appinit_dlls)"
+    },
+    {
+      "id": "CMD-029",
+      "severity": "High",
+      "mitre": "T1136.001,T1098",
+      "title": "Local account created / added to privileged group",
+      "pattern": "\\bnet1?(\\.exe)?\\s+user\\s+\\S+\\s+\\S+.*\\s/add\\b|\\bnet1?(\\.exe)?\\s+localgroup\\s+[\"']?(administrators|remote desktop users|remote management users)[\"']?\\s+\\S+.*\\s/add\\b|\\bnew-localuser\\s|\\badd-localgroupmember\\s"
+    },
+    {
+      "id": "CMD-030",
+      "severity": "Medium",
+      "mitre": "T1105",
+      "title": "Command-line tool downloading a remote file",
+      "pattern": "\\b(curl|wget)(\\.exe)?[\"']?\\s+.*https?://|\\bcurl(\\.exe)?\\s.*\\|\\s*(cmd|powershell|pwsh|iex)"
+    },
+    {
+      "id": "CMD-031",
+      "severity": "Medium",
+      "mitre": "T1071.001",
+      "title": "URL pointing to a raw public IP address",
+      "pattern": "https?://(?!127\\.|10\\.|192\\.168\\.|172\\.(1[6-9]|2\\d|3[01])\\.|169\\.254\\.)\\d{1,3}(\\.\\d{1,3}){3}"
+    },
+    {
+      "id": "CMD-032",
+      "severity": "Medium",
+      "mitre": "T1102,T1567",
+      "title": "Reference to file-sharing / paste / tunnelling service",
+      "pattern": "(pastebin\\.com|paste\\.ee|hastebin|ghostbin|transfer\\.sh|temp\\.sh|file\\.io|gofile\\.io|anonfiles|catbox\\.moe|0x0\\.st|ngrok(-free)?\\.(io|app|dev)|trycloudflare\\.com|\\.workers\\.dev|serveo\\.net|localtunnel|\\.loca\\.lt|duckdns\\.org|ddns\\.net|raw\\.githubusercontent\\.com|gist\\.githubusercontent\\.com|cdn\\.discordapp\\.com|discord(app)?\\.com/api/webhooks|api\\.telegram\\.org|mega\\.nz|mediafire\\.com|dropboxusercontent\\.com|iplogger\\.|bit\\.ly/|tinyurl\\.com/)"
+    },
+    {
+      "id": "CMD-033",
+      "severity": "High",
+      "mitre": "T1567.002",
+      "title": "Cloud exfiltration tool (rclone / MEGA / restic)",
+      "pattern": "\\brclone(\\.exe)?[\"']?\\s+(copy|sync|move|config)\\b|\\bmega(-put|cmd|client)\\b|\\brestic(\\.exe)?\\s+.*backup"
+    },
+    {
+      "id": "CMD-034",
+      "severity": "Medium",
+      "mitre": "T1560.001",
+      "title": "Password-protected archive creation (data staging)",
+      "pattern": "\\b(7z|7za|7zr|rar|winrar)(\\.exe)?[\"']?\\s+a\\s+.*\\s-(p|hp)\\S+"
+    },
+    {
+      "id": "CMD-035",
+      "severity": "Medium",
+      "mitre": "T1047",
+      "title": "WMI process creation",
+      "pattern": "wmic(\\.exe)?[\"']?\\s+.*process\\s+call\\s+create|invoke-wmimethod\\s+.*win32_process.*create|invoke-cimmethod\\s+.*win32_process.*create"
+    },
+    {
+      "id": "CMD-036",
+      "severity": "High",
+      "mitre": "T1059.005,T1059.007",
+      "title": "Script host running script from user-writable path",
+      "pattern": "(wscript|cscript)(\\.exe)?[\"']?\\s+.*\\\\(appdata|temp|downloads|users\\\\public|programdata)\\\\.*\\.(js|jse|vbs|vbe|wsf|wsh)\\b"
+    },
+    {
+      "id": "CMD-037",
+      "severity": "High",
+      "mitre": "T1127.001,T1218.009",
+      "title": "Trusted developer utility executing payload from user path",
+      "pattern": "\\b(msbuild|installutil|regasm|regsvcs|csc|jsc|ilasm|msxsl|microsoft\\.workflow\\.compiler|cdb|ntsd|bginfo|presentationhost)(\\.exe)?[\"']?\\s+.*\\\\(appdata|temp|users\\\\public|programdata|downloads)\\\\"
+    },
+    {
+      "id": "CMD-038",
+      "severity": "High",
+      "mitre": "T1218",
+      "title": "Signed binary proxy execution (LOLBin)",
+      "pattern": "\\bodbcconf(\\.exe)?\\s+.*[-/]a\\s|\\bcmstp(\\.exe)?\\s+.*\\.inf|\\bforfiles(\\.exe)?\\s+.*[-/]c\\s|\\bpcalua(\\.exe)?\\s+-a|\\bmsiexec(\\.exe)?[\"']?\\s+.*[-/](i|package)\\s+[\"']?https?:|\\bmsiexec(\\.exe)?[\"']?\\s+.*[-/]y\\s|\\bhh(\\.exe)?\\s+https?:|\\bmavinject(\\.exe)?\\s+.*[-/]injectrunning|\\bsyncappvpublishingserver|\\bxwizard(\\.exe)?\\s+runwizard|\\bmsdt(\\.exe)?\\s+.*(ms-msdt|it_browseforfile)|\\bdesktopimgdownldr|\\bieexec(\\.exe)?\\s|\\bwlrmdr(\\.exe)?\\s|\\bfinger(\\.exe)?\\s+\\S+@"
+    },
+    {
+      "id": "CMD-039",
+      "severity": "Critical",
+      "mitre": "T1562.001",
+      "title": "AMSI bypass attempt",
+      "pattern": "amsi[u]tils|amsi[i]nitfailed|amsi[s]canbuffer|amsi[c]ontext|amsi\\.dll.{0,100}(patch|virtual[p]rotect)"
+    },
+    {
+      "id": "CMD-040",
+      "severity": "High",
+      "mitre": "T1055,T1620",
+      "title": "Code injection / reflective loading API usage",
+      "pattern": "(virtual[a]lloc(ex)?|writeprocess[m]emory|createremote[t]hread|ntcreate[t]hreadex|queueuser[a]pc|getdelegatefor[f]unctionpointer|reflection\\.assembly\\]::lo[a]d(file)?\\(|\\bdll[i]mport\\b.{0,40}kernel32)"
+    },
+    {
+      "id": "CMD-041",
+      "severity": "Medium",
+      "mitre": "T1562.010",
+      "title": "PowerShell version 2 downgrade",
+      "pattern": "(powershell|pwsh)(\\.exe)?[\"']?\\s+.*[-/]v[a-z]*\\s+2(\\.0)?\\b"
+    },
+    {
+      "id": "CMD-042",
+      "severity": "Medium",
+      "mitre": "T1027.010",
+      "title": "Command-line obfuscation (carets / char codes / reversal)",
+      "pattern": "([a-z]\\^){4,}|(\\[char\\]\\s*\\(?\\d{2,3}\\)?\\s*\\+?\\s*){4,}|\\$env:comspec\\[\\d+|\\[-1\\.\\.\\s*-"
+    },
+    {
+      "id": "CMD-043",
+      "severity": "High",
+      "mitre": "T1204.004",
+      "title": "ClickFix / fake CAPTCHA paste-and-run lure",
+      "pattern": "(powershell|pwsh|mshta|cmd|curl|msiexec|wscript|conhost).{0,500}(captcha|not a robot|verification id|verify you are human|human verification|cloudflare verification|ray id:)"
+    },
+    {
+      "id": "CMD-044",
+      "severity": "High",
+      "mitre": "T1548.002",
+      "title": "UAC bypass technique",
+      "pattern": "(ms-settings|mscfile|exefile|launcher\\.systemsettings)\\\\shell\\\\open\\\\command|\\\\folder\\\\shell\\\\open\\\\command|cmstplua|icmluautil"
+    },
+    {
+      "id": "CMD-045",
+      "severity": "Critical",
+      "mitre": "T1546.008",
+      "title": "Accessibility binary replacement (sticky-keys backdoor)",
+      "pattern": "\\b(copy|move|xcopy|robocopy|takeown|icacls|ren|rename|copy-item)\\b.*\\\\(sethc|utilman|osk|magnify|narrator|displayswitch|atbroker)\\.exe|image file execution options\\\\(sethc|utilman|osk|magnify|narrator|displayswitch|atbroker)\\.exe"
+    },
+    {
+      "id": "CMD-046",
+      "severity": "Medium",
+      "mitre": "T1021.001",
+      "title": "Remote Desktop enabled / opened from command line",
+      "pattern": "fdenytsconnections.{0,40}\\b0\\b|enable-netfirewallrule.*remote\\s*desktop|netsh.*(firewall|advfirewall).*(3389|remote\\s*desktop)"
+    },
+    {
+      "id": "CMD-047",
+      "severity": "Medium",
+      "mitre": "T1552.001",
+      "title": "Searching files for credentials",
+      "pattern": "(findstr|select-string)\\b.{0,80}(password|passwd|pwd=|cpassword|credential)|\\bdir\\b.{0,40}(\\*pass\\*|\\*cred\\*|\\*\\.kdbx)"
+    },
+    {
+      "id": "CMD-048",
+      "severity": "Low",
+      "mitre": "T1564.001",
+      "title": "Hiding files with system+hidden attributes",
+      "pattern": "\\battrib(\\.exe)?\\s+.*\\+h.*\\+s|\\battrib(\\.exe)?\\s+.*\\+s.*\\+h"
+    },
+    {
+      "id": "CMD-049",
+      "severity": "High",
+      "mitre": "T1070",
+      "title": "Anti-forensics (USN journal / wipe / timestomp)",
+      "pattern": "fsutil(\\.exe)?\\s+usn\\s+deletejournal|cipher(\\.exe)?\\s+/w:|\\bsdelete(64)?(\\.exe)?\\s|\\btimestomp\\b"
+    },
+    {
+      "id": "CMD-050",
+      "severity": "High",
+      "mitre": "T1090.003",
+      "title": "Tor / onion routing",
+      "pattern": "\\btor(\\.exe)?[\"']?\\s+.{0,40}(--|socks)|\\.onion\\b|torbrowser"
+    },
+    {
+      "id": "CMD-051",
+      "severity": "Critical",
+      "mitre": "T1059.001",
+      "title": "Offensive PowerShell / C2 framework",
+      "pattern": "invoke-(shell[c]ode|reflective[p]einjection|dll[i]njection|token[m]anipulation|powershell[t]cp|ps[i]nject|night[m]are|smb[e]xec|wmi[e]xec|the[h]ash|kerbero[a]st|ninja[c]opy|credential[i]njection|port[s]can|share[f]inder|in[v]eigh)|power[s]ploit|\\bnish[a]ng\\b|\\bpower[c]at\\b|cobalt[s]trike|cobalt\\s+stri[k]e|brute\\s?ra[t]el|\\bsliver-[c]lient\\b"
+    },
+    {
+      "id": "CMD-052",
+      "severity": "Critical",
+      "mitre": "T1059",
+      "title": "Reverse shell pattern",
+      "pattern": "net\\.sockets\\.tcp[c]lient|\\bnc(at|64)?(\\.exe)?\\s+.*-e\\s+(cmd|powershell|/bin/sh)|\\bsocat(\\.exe)?\\s+.*exec:|/dev/tcp/"
+    },
+    {
+      "id": "CMD-053",
+      "severity": "High",
+      "mitre": "T1112,T1562.001",
+      "title": "Security feature disabled via registry",
+      "pattern": "(reg(\\.exe)?[\"']?\\s+add|set-itemproperty|new-itemproperty).*(disableantispyware|disablerealtimemonitoring|disablebehaviormonitoring|tamperprotection|enablelua|consentpromptbehavioradmin|uselogoncredential|disablerestrictedadmin|localaccounttokenfilterpolicy)"
+    },
+    {
+      "id": "CMD-054",
+      "severity": "High",
+      "mitre": "T1555.003",
+      "title": "Browser credential / cookie store access",
+      "pattern": "(copy|robocopy|xcopy|copy-item|esentutl)\\b.{0,200}\\\\(login data|cookies|web data|local state|key4\\.db|logins\\.json)\\b|vaultcmd(\\.exe)?\\s+/list"
+    },
+    {
+      "id": "CMD-055",
+      "severity": "High",
+      "mitre": "T1219",
+      "title": "Silent install / config of remote-access tool",
+      "pattern": "(anydesk|rustdesk|screenconnect|atera|splashtop|netsupport|meshagent|simplehelp|teamviewer)[^\\s]*\\.(exe|msi)[\"']?\\s+.*(--install|--silent|/quiet|/qn|--start-with-win|--set-password)|anydesk.*--set-password"
+    },
+    {
+      "id": "CMD-056",
+      "severity": "Medium",
+      "mitre": "T1070.004",
+      "title": "Self-deletion pattern",
+      "pattern": "ping\\s+(-n\\s+\\d+\\s+)?127\\.0\\.0\\.1.*&\\s*del\\s|timeout\\s+/t\\s+\\d+.*&\\s*del\\s|choice\\s+/c\\s+y\\s+/n.*&\\s*del\\s"
+    }
+  ],
+  "knownTools": {
+    "adfind": {
+      "severity": "High",
+      "label": "AdFind AD recon (ransomware favourite)",
+      "mitre": "T1087.002"
+    },
+    "advanced_ip_scanner": {
+      "severity": "Medium",
+      "label": "Advanced IP Scanner (ransomware favourite)",
+      "mitre": "T1046"
+    },
+    "advanced_port_scanner": {
+      "severity": "Medium",
+      "label": "Advanced Port Scanner",
+      "mitre": "T1046"
+    },
+    "atexec": {
+      "severity": "High",
+      "label": "Impacket atexec",
+      "mitre": "T1053.005"
+    },
+    "backstab": {
+      "severity": "Critical",
+      "label": "Backstab EDR killer",
+      "mitre": "T1562.001"
+    },
+    "beacon": {
+      "severity": "High",
+      "label": "Possible Cobalt Strike beacon",
+      "mitre": "T1071.001"
+    },
+    "bloodhound": {
+      "severity": "High",
+      "label": "BloodHound",
+      "mitre": "T1087.002"
+    },
+    "certify": {
+      "severity": "High",
+      "label": "Certify AD CS abuse",
+      "mitre": "T1649"
+    },
+    "certipy": {
+      "severity": "High",
+      "label": "Certipy AD CS abuse",
+      "mitre": "T1649"
+    },
+    "chisel": {
+      "severity": "High",
+      "label": "Chisel tunnel",
+      "mitre": "T1572"
+    },
+    "cloudflared": {
+      "severity": "Medium",
+      "label": "Cloudflare tunnel client",
+      "mitre": "T1572"
+    },
+    "crackmapexec": {
+      "severity": "High",
+      "label": "CrackMapExec",
+      "mitre": "T1021.002"
+    },
+    "csexec": {
+      "severity": "High",
+      "label": "CSExec remote execution",
+      "mitre": "T1569.002"
+    },
+    "dcomexec": {
+      "severity": "High",
+      "label": "Impacket dcomexec",
+      "mitre": "T1021.003"
+    },
+    "dcontrol": {
+      "severity": "High",
+      "label": "Defender Control (disables Defender)",
+      "mitre": "T1562.001"
+    },
+    "defendercontrol": {
+      "severity": "High",
+      "label": "Defender Control (disables Defender)",
+      "mitre": "T1562.001"
+    },
+    "dumpert": {
+      "severity": "Critical",
+      "label": "Dumpert LSASS dumper",
+      "mitre": "T1003.001"
+    },
+    "edrsandblast": {
+      "severity": "Critical",
+      "label": "EDRSandblast",
+      "mitre": "T1562.001"
+    },
+    "edrsilencer": {
+      "severity": "Critical",
+      "label": "EDRSilencer",
+      "mitre": "T1562.001"
+    },
+    "filezilla": {
+      "severity": "Low",
+      "label": "FileZilla FTP client (possible exfil)",
+      "mitre": "T1048"
+    },
+    "frpc": {
+      "severity": "High",
+      "label": "FRP reverse proxy client",
+      "mitre": "T1572"
+    },
+    "frps": {
+      "severity": "High",
+      "label": "FRP reverse proxy server",
+      "mitre": "T1572"
+    },
+    "gmer": {
+      "severity": "High",
+      "label": "GMER (EDR killer)",
+      "mitre": "T1562.001"
+    },
+    "gost": {
+      "severity": "High",
+      "label": "GOST tunnel",
+      "mitre": "T1572"
+    },
+    "iox": {
+      "severity": "High",
+      "label": "iox port forwarder",
+      "mitre": "T1572"
+    },
+    "ipscan": {
+      "severity": "Medium",
+      "label": "Angry IP Scanner",
+      "mitre": "T1046"
+    },
+    "kekeo": {
+      "severity": "Critical",
+      "label": "Kekeo Kerberos tool",
+      "mitre": "T1558"
+    },
+    "kerbrute": {
+      "severity": "High",
+      "label": "Kerbrute",
+      "mitre": "T1110"
+    },
+    "lazagne": {
+      "severity": "Critical",
+      "label": "LaZagne password stealer",
+      "mitre": "T1555"
+    },
+    "ligolo": {
+      "severity": "High",
+      "label": "Ligolo tunnel",
+      "mitre": "T1572"
+    },
+    "ligolo-ng": {
+      "severity": "High",
+      "label": "Ligolo-ng tunnel",
+      "mitre": "T1572"
+    },
+    "masscan": {
+      "severity": "High",
+      "label": "masscan",
+      "mitre": "T1046"
+    },
+    "mega-put": {
+      "severity": "High",
+      "label": "MEGA upload",
+      "mitre": "T1567.002"
+    },
+    "megacmd": {
+      "severity": "High",
+      "label": "MEGAcmd",
+      "mitre": "T1567.002"
+    },
+    "megasync": {
+      "severity": "Medium",
+      "label": "MEGAsync",
+      "mitre": "T1567.002"
+    },
+    "meterpreter": {
+      "severity": "Critical",
+      "label": "Metasploit Meterpreter",
+      "mitre": "T1059"
+    },
+    "mimidrv": {
+      "severity": "Critical",
+      "label": "Mimikatz driver",
+      "mitre": "T1003"
+    },
+    "mimikatz": {
+      "severity": "Critical",
+      "label": "Mimikatz credential dumper",
+      "mitre": "T1003"
+    },
+    "msfvenom": {
+      "severity": "Critical",
+      "label": "Metasploit payload generator",
+      "mitre": "T1587.001"
+    },
+    "nanodump": {
+      "severity": "Critical",
+      "label": "nanodump LSASS dumper",
+      "mitre": "T1003.001"
+    },
+    "nc": {
+      "severity": "High",
+      "label": "Netcat",
+      "mitre": "T1059"
+    },
+    "nc64": {
+      "severity": "High",
+      "label": "Netcat",
+      "mitre": "T1059"
+    },
+    "ncat": {
+      "severity": "High",
+      "label": "Ncat",
+      "mitre": "T1059"
+    },
+    "netcat": {
+      "severity": "High",
+      "label": "Netcat",
+      "mitre": "T1059"
+    },
+    "netexec": {
+      "severity": "High",
+      "label": "NetExec",
+      "mitre": "T1021.002"
+    },
+    "netscan": {
+      "severity": "Medium",
+      "label": "SoftPerfect NetScan (ransomware favourite)",
+      "mitre": "T1046"
+    },
+    "ngrok": {
+      "severity": "High",
+      "label": "ngrok tunnel",
+      "mitre": "T1572"
+    },
+    "nmap": {
+      "severity": "Medium",
+      "label": "Nmap scanner",
+      "mitre": "T1046"
+    },
+    "nxc": {
+      "severity": "High",
+      "label": "NetExec",
+      "mitre": "T1021.002"
+    },
+    "paexec": {
+      "severity": "High",
+      "label": "PAExec remote execution",
+      "mitre": "T1569.002"
+    },
+    "pchunter": {
+      "severity": "High",
+      "label": "PC Hunter (EDR killer)",
+      "mitre": "T1562.001"
+    },
+    "pchunter64": {
+      "severity": "High",
+      "label": "PC Hunter (EDR killer)",
+      "mitre": "T1562.001"
+    },
+    "plink": {
+      "severity": "Medium",
+      "label": "PuTTY plink (SSH tunnelling)",
+      "mitre": "T1572"
+    },
+    "powertool": {
+      "severity": "High",
+      "label": "PowerTool (EDR killer)",
+      "mitre": "T1562.001"
+    },
+    "procdump": {
+      "severity": "Medium",
+      "label": "Sysinternals ProcDump (often used to dump LSASS)",
+      "mitre": "T1003.001"
+    },
+    "procdump64": {
+      "severity": "Medium",
+      "label": "Sysinternals ProcDump (often used to dump LSASS)",
+      "mitre": "T1003.001"
+    },
+    "processhacker": {
+      "severity": "Medium",
+      "label": "Process Hacker (used to kill EDR)",
+      "mitre": "T1562.001"
+    },
+    "pscp": {
+      "severity": "Low",
+      "label": "PuTTY pscp (possible exfil)",
+      "mitre": "T1048"
+    },
+    "psexec": {
+      "severity": "Medium",
+      "label": "Sysinternals PsExec",
+      "mitre": "T1569.002"
+    },
+    "psexec64": {
+      "severity": "Medium",
+      "label": "Sysinternals PsExec",
+      "mitre": "T1569.002"
+    },
+    "psexesvc": {
+      "severity": "Medium",
+      "label": "PsExec service (remote execution into this host)",
+      "mitre": "T1569.002"
+    },
+    "pypykatz": {
+      "severity": "Critical",
+      "label": "pypykatz credential dumper",
+      "mitre": "T1003"
+    },
+    "rclone": {
+      "severity": "High",
+      "label": "rclone (cloud exfiltration favourite)",
+      "mitre": "T1567.002"
+    },
+    "remcom": {
+      "severity": "High",
+      "label": "RemCom remote execution",
+      "mitre": "T1569.002"
+    },
+    "restic": {
+      "severity": "Medium",
+      "label": "restic backup (possible exfil)",
+      "mitre": "T1567"
+    },
+    "revsocks": {
+      "severity": "High",
+      "label": "revsocks tunnel",
+      "mitre": "T1572"
+    },
+    "rubeus": {
+      "severity": "Critical",
+      "label": "Rubeus Kerberos attack tool",
+      "mitre": "T1558"
+    },
+    "safetykatz": {
+      "severity": "Critical",
+      "label": "SafetyKatz",
+      "mitre": "T1003"
+    },
+    "sdelete": {
+      "severity": "Medium",
+      "label": "SDelete secure delete",
+      "mitre": "T1070.004"
+    },
+    "sdelete64": {
+      "severity": "Medium",
+      "label": "SDelete secure delete",
+      "mitre": "T1070.004"
+    },
+    "seatbelt": {
+      "severity": "High",
+      "label": "Seatbelt host recon",
+      "mitre": "T1082"
+    },
+    "secretsdump": {
+      "severity": "Critical",
+      "label": "Impacket secretsdump",
+      "mitre": "T1003"
+    },
+    "sharphound": {
+      "severity": "High",
+      "label": "SharpHound (BloodHound collector)",
+      "mitre": "T1087.002"
+    },
+    "sharpkatz": {
+      "severity": "Critical",
+      "label": "SharpKatz",
+      "mitre": "T1003"
+    },
+    "sharpup": {
+      "severity": "High",
+      "label": "SharpUp privesc checker",
+      "mitre": "T1068"
+    },
+    "smbexec": {
+      "severity": "High",
+      "label": "Impacket smbexec",
+      "mitre": "T1021.002"
+    },
+    "socat": {
+      "severity": "High",
+      "label": "socat",
+      "mitre": "T1059"
+    },
+    "spyboy": {
+      "severity": "High",
+      "label": "Spyboy EDR killer",
+      "mitre": "T1562.001"
+    },
+    "systeminformer": {
+      "severity": "Medium",
+      "label": "System Informer (used to kill EDR)",
+      "mitre": "T1562.001"
+    },
+    "terminator": {
+      "severity": "High",
+      "label": "Terminator EDR killer (BYOVD)",
+      "mitre": "T1562.001"
+    },
+    "tor": {
+      "severity": "High",
+      "label": "Tor client",
+      "mitre": "T1090.003"
+    },
+    "wevtutil_clear": {
+      "severity": "High",
+      "label": "Log clearing helper",
+      "mitre": "T1070.001"
+    },
+    "winpeas": {
+      "severity": "High",
+      "label": "winPEAS privesc checker",
+      "mitre": "T1068"
+    },
+    "winpeasany": {
+      "severity": "High",
+      "label": "winPEAS privesc checker",
+      "mitre": "T1068"
+    },
+    "winpeasx64": {
+      "severity": "High",
+      "label": "winPEAS privesc checker",
+      "mitre": "T1068"
+    },
+    "winscp": {
+      "severity": "Low",
+      "label": "WinSCP (possible exfil)",
+      "mitre": "T1048"
+    },
+    "wmiexec": {
+      "severity": "High",
+      "label": "Impacket wmiexec",
+      "mitre": "T1047"
+    }
+  },
+  "rmmTools": {
+    "aa_v3": "Ammyy Admin",
+    "action1_agent": "Action1",
+    "agentmon": "Kaseya",
+    "ammyy": "Ammyy Admin",
+    "anydesk": "AnyDesk",
+    "atera": "Atera",
+    "ateraagent": "Atera",
+    "bomgar-scc": "BeyondTrust Remote Support",
+    "client32": "NetSupport Manager (NetSupport RAT)",
+    "connectwisecontrol.client": "ConnectWise Control",
+    "dwagent": "DWService",
+    "dwrcs": "DameWare",
+    "fleetdeck_agent": "FleetDeck",
+    "getscreen": "Getscreen.me",
+    "gotoassist": "GoTo Assist",
+    "itsmservice": "ITarian",
+    "level": "Level RMM",
+    "lmiguardiansvc": "LogMeIn",
+    "logmein": "LogMeIn",
+    "meshagent": "MeshCentral agent",
+    "ninjarmmagent": "NinjaOne",
+    "parsec": "Parsec",
+    "pcicfgui": "NetSupport Manager",
+    "radmin": "Radmin",
+    "remote access": "SimpleHelp",
+    "remotepc": "RemotePC",
+    "rfusclient": "Remote Utilities",
+    "rserver3": "Radmin server",
+    "rustdesk": "RustDesk",
+    "rutserv": "Remote Utilities",
+    "screenconnect.clientservice": "ScreenConnect",
+    "screenconnect.windowsclient": "ScreenConnect",
+    "simplehelp": "SimpleHelp",
+    "splashtop": "Splashtop",
+    "srservice": "Splashtop",
+    "strwinclt": "Splashtop",
+    "supremo": "Supremo",
+    "supremoservice": "Supremo",
+    "syncro": "Syncro",
+    "tacticalagent": "Tactical RMM",
+    "tacticalrmm": "Tactical RMM",
+    "teamviewer": "TeamViewer",
+    "teamviewer_service": "TeamViewer",
+    "tv_w32": "TeamViewer",
+    "tv_x64": "TeamViewer",
+    "tvnserver": "TightVNC",
+    "uvnc_service": "UltraVNC",
+    "vncserver": "VNC server",
+    "winvnc": "VNC server",
+    "zaservice": "Zoho Assist",
+    "zohomeeting": "Zoho Assist"
+  },
+  "vulnerableDrivers": [
+    "rtcore64.sys",
+    "rtcore32.sys",
+    "dbutil_2_3.sys",
+    "dbutildrv2.sys",
+    "gdrv.sys",
+    "asio.sys",
+    "asio2.sys",
+    "asio3.sys",
+    "aswarpot.sys",
+    "kprocesshacker.sys",
+    "procexp152.sys",
+    "zam64.sys",
+    "zamguard64.sys",
+    "mhyprot2.sys",
+    "mhyprot3.sys",
+    "iqvw64e.sys",
+    "winring0x64.sys",
+    "winring0.sys",
+    "truesight.sys",
+    "rentdrv2.sys",
+    "gmer64.sys",
+    "cpuz141.sys",
+    "physmem.sys",
+    "speedfan.sys",
+    "atillk64.sys",
+    "msio64.sys",
+    "msio32.sys",
+    "glckio2.sys",
+    "winio64.sys",
+    "winio32.sys",
+    "amifldrv64.sys",
+    "bs_def64.sys",
+    "elbycdio.sys",
+    "directio64.sys",
+    "viragt64.sys",
+    "wnbios.sys",
+    "ntiolib_x64.sys",
+    "capcom.sys",
+    "fiddrv64.sys",
+    "rzpnk.sys",
+    "phymemx64.sys",
+    "pdfwkrnl.sys",
+    "nicm.sys",
+    "inpoutx64.sys",
+    "asrdrv101.sys",
+    "asrdrv102.sys",
+    "amdryzenmasterdriver.sys",
+    "hpportiox64.sys",
+    "probmon.sys",
+    "sysdrv3s.sys",
+    "ktgn.sys",
+    "wfshbr64.sys",
+    "zemanaantimalware.sys",
+    "tfsysmon.sys",
+    "poortry.sys",
+    "stdcdrv64.sys",
+    "hwrwdrv.sys",
+    "ene.sys",
+    "lgdcatcher.sys",
+    "echo_driver.sys",
+    "biontdrv.sys",
+    "appid.sys.bak",
+    "windbg.sys",
+    "ksapi64.sys",
+    "netfilter.sys"
+  ]
+}

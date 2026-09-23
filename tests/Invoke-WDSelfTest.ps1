@@ -12,10 +12,15 @@ foreach ($lib in @('WD.Core.ps1', 'WD.Rules.ps1', 'WD.Execution.ps1', 'WD.Report
 $script:pass = 0; $script:fail = 0
 function Assert-WD { param([bool]$Condition, [string]$Name) if ($Condition) { $script:pass++ } else { $script:fail++; Write-Host "FAIL: $Name" -ForegroundColor Red } }
 
-New-WDContext -Options @{ Days = 30; CaseId = 'SELFTEST'; Analyst = 'selftest'; MaxEvents = 100; MaxHashBytes = 1MB }
+New-WDContext -Options @{ Days = 30; CaseId = 'SELFTEST'; Analyst = 'selftest'; MaxEvents = 100; MaxHashBytes = 1MB; ToolRoot = $root }
 
-# ---- rules compile
-Assert-WD ($script:WDCommandRules.Count -eq $script:WDCommandRuleDefs.Count) "all $($script:WDCommandRuleDefs.Count) rules compile"
+# ---- detection data loads and every rule compiles
+$dataPath = Join-Path $root 'rules/detection-data.json'
+$ruleTotal = @(([IO.File]::ReadAllText($dataPath) | ConvertFrom-Json).commandRules).Count
+$loaded = Import-WDDetectionData -Path $dataPath
+Assert-WD ($loaded -gt 0 -and $script:WDCommandRules.Count -eq $ruleTotal) "all $ruleTotal rules compile"
+Assert-WD ($script:WDKnownTools.Count -gt 50 -and $script:WDRmmTools.Count -gt 30 -and $script:WDVulnerableDrivers.Count -gt 50) 'tool / RMM / driver intel loaded'
+Assert-WD (Test-WDVulnerableDriver 'C:\Windows\System32\drivers\RTCore64.sys') 'vulnerable driver match'
 
 # ---- benign command lines must not raise Medium+ rule hits
 $benign = @(
@@ -52,11 +57,19 @@ Assert-WD ($null -eq (Test-WDMasquerade 'C:\Windows\System32\svchost.exe')) 'gen
 Assert-WD ((Get-WDToolMatch 'C:\x\AnyDesk.exe').Kind -eq 'RMM') 'RMM tool match'
 Assert-WD ((Get-WDToolMatch 'RCLONE.EXE-1A2B3C4D.pf').Name -eq 'rclone') 'prefetch name tool match'
 Assert-WD ((ConvertTo-WDTimeString '2026-01-02 03:04:05') -eq '2026-01-02 03:04:05') 'UTC strings not shifted'
+Assert-WD (Test-WDSelfPath 'amsi:_C:\Users\X\Desktop\WindowsDetective-main\lib\WD.Rules.ps1') 'AV detection of own files recognised'
+Assert-WD (-not (Test-WDSelfPath 'file:_C:\Users\X\Downloads\invoice.exe')) 'real detection not treated as self'
+
+# ---- tool code must not embed attack keywords that make antivirus (AMSI) block it
+$bait = '(?i)(mimi' + 'katz|sekur' + 'lsa|cobalt' + 'strike|cobalt strike|download' + 'string|amsi' + 'utils|amsiinit' + 'failed|virtual' + 'alloc|invoke-' + 'shellcode)'
+foreach ($f in @(Get-ChildItem (Join-Path $root 'lib') -Filter *.ps1) + @(Get-Item (Join-Path $root 'WindowsDetective.ps1'))) {
+    Assert-WD ((Get-Content $f.FullName -Raw) -notmatch $bait) "no AMSI bait strings in $($f.Name)"
+}
 
 # ---- every MITRE id used in the code has a name
 $ids = @{}
-foreach ($f in @(Get-ChildItem (Join-Path $root 'lib') -Filter *.ps1)) {
-    foreach ($m in [regex]::Matches((Get-Content $f.FullName -Raw), "'(T\d{4}(\.\d{3})?(,T\d{4}(\.\d{3})?)*)'")) {
+foreach ($f in @(Get-ChildItem (Join-Path $root 'lib') -Filter *.ps1) + @(Get-Item $dataPath)) {
+    foreach ($m in [regex]::Matches((Get-Content $f.FullName -Raw), "['""](T\d{4}(\.\d{3})?(,T\d{4}(\.\d{3})?)*)['""]")) {
         foreach ($t in $m.Groups[1].Value -split ',') { $ids[$t] = $f.Name }
     }
 }

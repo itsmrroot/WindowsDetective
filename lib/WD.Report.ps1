@@ -39,7 +39,7 @@ function Get-WDRecommendations {
         $r.Add('<b>Contain the host</b>: isolate it from the network (EDR network containment, or disconnect the cable / disable Wi-Fi) but keep it <b>powered on</b> to preserve volatile evidence.')
         if (-not $script:WD.MemoryImage) { $r.Add('<b>Capture memory before any reboot</b>: re-run with <code>-MemoryDump</code> (winpmem in tools\) or use your EDR live-response memory acquisition.') }
     }
-    if ($all -match 'T1003|Credential Access|brute|spraying|Mimikatz|WDigest') {
+    if ($all -match 'T1003|T1555|T1558|Credential Access|brute|spraying|WDigest') {
         $r.Add('<b>Assume credentials are stolen</b>: reset passwords for every account that logged on to this host, revoke sessions/refresh tokens (Entra ID / M365), rotate local admin passwords (LAPS). If domain admin credentials were exposed, plan a double KRBTGT reset.')
     }
     if ($all -match 'Persistence') { $r.Add('<b>Scope persistence before removing it</b>: document every entry in the Persistence findings and the Autoruns artifact, then hunt for the same names/hashes on other hosts before cleaning.') }

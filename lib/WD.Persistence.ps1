@@ -143,7 +143,7 @@ function Invoke-WDServices {
         $trustSvc = ($s.Name -eq 'msiserver' -and $s.PathName -match '(?i)^[a-z]:\\windows\\system32\\msiexec\.exe /V$')
         Add-WDAutorun -Category 'Service' -Location "Service $($s.Name)" -Name $s.DisplayName -Command $s.PathName -User $s.StartName -Mitre 'T1543.003' -InterpreterSeverity 'High' -TrustMicrosoftInterpreters:$trustSvc
         if ($s.PathName -match '(?i)%comspec%|cmd(\.exe)?\s+/c|powershell|mshta|\\\\127\.0\.0\.1\\|\\\\localhost\\') {
-            Add-Finding -Severity High -Category 'Persistence' -Title 'Service executes a command shell (PsExec / Impacket / Cobalt Strike style)' -Evidence "$($s.Name): $($s.PathName)" -Mitre 'T1543.003,T1569.002'
+            Add-Finding -Severity High -Category 'Persistence' -Title 'Service executes a command shell (PsExec / Impacket / C2-framework style)' -Evidence "$($s.Name): $($s.PathName)" -Mitre 'T1543.003,T1569.002'
         }
         if ($dll) {
             $d = [Environment]::ExpandEnvironmentVariables($dll)

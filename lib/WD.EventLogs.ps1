@@ -163,7 +163,7 @@ function Invoke-WDSecurityLog {
                 $title = "$title '$($d.TargetUserName)'"
             }
             4616 {
-                if ($d.ProcessName -match '(?i)\\svchost\.exe$|\\vmtoolsd\.exe$' -or $d.SubjectUserSid -eq 'S-1-5-19') { $skip = $true }
+                if ($d.ProcessName -match '(?i)\\(svchost|vmtoolsd|qemu-ga|VBoxService|prl_tools_service|xenguestagent|WindowsAzureGuestAgent)\.exe$' -or $d.SubjectUserSid -eq 'S-1-5-19') { $skip = $true }
                 $ev = "$ev | $($d.PreviousTime) -> $($d.NewTime) by $($d.ProcessName)"
             }
             4697 {
@@ -242,7 +242,7 @@ function Invoke-WDSystemLog {
         Add-WDTimeline -Time $e.Time -Source 'System 7045' -Description "Service installed: $($d.ServiceName)" -Detail $img -Severity 'Low'
         [void](Invoke-WDCommandCheck -Text $img -Source "Service install 7045 $($d.ServiceName)" -Time $e.Time -Category 'Persistence')
         if ($img -match '(?i)%comspec%|cmd(\.exe)?\s+/[ckr]|powershell|pwsh|mshta|rundll32|\\\\127\.0\.0\.1\\|echo\s') {
-            Add-Finding -Severity High -Category 'Persistence' -Title 'Service installed that runs a command shell (PsExec / Impacket / Cobalt Strike)' -Evidence $ev -Mitre 'T1543.003,T1569.002' -Time $e.Time -Source 'System 7045'
+            Add-Finding -Severity High -Category 'Persistence' -Title 'Service installed that runs a command shell (PsExec / Impacket / C2-framework style)' -Evidence $ev -Mitre 'T1543.003,T1569.002' -Time $e.Time -Source 'System 7045'
         }
         if ($d.ServiceName -match '^(PSEXESVC|PAExec.*|RemComSvc|csexecsvc|BTOBTO)$') {
             Add-Finding -Severity Medium -Category 'Lateral Movement' -Title "Remote execution service installed ($($d.ServiceName))" -Evidence $ev -Mitre 'T1569.002,T1021.002' -Time $e.Time -Source 'System 7045'
@@ -341,6 +341,10 @@ function Invoke-WDDefenderLog {
     foreach ($e in (Get-WDEvents -LogName $log -Id @(1006, 1015, 1116, 1117, 1118, 1119, 5001, 5004, 5007, 5010, 5012, 5013) -Since (Get-Date).AddDays(-1 * [Math]::Max(90, $script:WD.Options.Days)))) {
         $d = $e.Data
         $threat = $d.'Threat Name'; $path = $d.Path; $proc = $d.'Process Name'; $user = $d.'Detection User'; $act = $d.'Action Name'
+        if ($e.Id -in @(1006, 1015, 1116, 1117, 1118, 1119) -and (Test-WDSelfPath "$path $proc")) {
+            Add-Finding -Severity Info -Category 'Tool' -Title "Antivirus flagged Windows Detective's own files ($threat)" -Detail 'The detection points at this tool, not at the host. Not an indicator of compromise.' -Evidence $path -Time $e.Time -Source "Defender $($e.Id)"
+            continue
+        }
         $rows.Add([pscustomobject][ordered]@{ TimeUtc = (ConvertTo-WDTimeString $e.Time); EventId = $e.Id; Threat = $threat; Severity = $d.'Severity Name'; Path = $path; Process = $proc; User = $user; Action = $act; OldValue = $d.'Old Value'; NewValue = $d.'New Value' })
         switch ([int]$e.Id) {
             { $_ -in 1006, 1015, 1116 } { Add-Finding -Severity High -Category 'Malware' -Title "Microsoft Defender detection: $threat" -Detail "Severity $($d.'Severity Name'), category $($d.'Category Name')" -Evidence "Path: $path | Process: $proc | User: $user" -Mitre 'T1204.002' -Time $e.Time -Source "Defender $($e.Id)"; foreach ($seg in ([string]$path -split ';')) { if ($seg -match '^file:_(.+)$') { $script:WD.SuspiciousFiles[$Matches[1]] = 'Defender detection' } } }

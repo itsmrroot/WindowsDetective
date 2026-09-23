@@ -61,9 +61,29 @@ $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 
 $toolRoot = $PSScriptRoot
+$loadErrors = @()
 foreach ($lib in @('WD.Core.ps1', 'WD.Rules.ps1', 'WD.System.ps1', 'WD.Processes.ps1', 'WD.Network.ps1', 'WD.Persistence.ps1',
         'WD.Execution.ps1', 'WD.EventLogs.ps1', 'WD.FileSystem.ps1', 'WD.Security.ps1', 'WD.Evidence.ps1', 'WD.Report.ps1')) {
-    . (Join-Path $toolRoot "lib\$lib")
+    try { . (Join-Path $toolRoot "lib\$lib") } catch { $loadErrors += "$lib : $($_.Exception.Message)" }
+}
+# A module blocked by antivirus (AMSI) or damaged in transit must stop the run - partial results would be misleading.
+$requiredFunctions = @('New-WDContext', 'Import-WDDetectionData', 'Invoke-WDCommandCheck', 'Get-WDToolMatch', 'Test-WDVulnerableDriver', 'Get-WDMitreName',
+    'Invoke-WDSystemCollector', 'Invoke-WDProcessCollector', 'Invoke-WDNetworkCollector', 'Invoke-WDPersistenceCollector', 'Invoke-WDExecutionCollector',
+    'Invoke-WDEventLogCollector', 'Invoke-WDFileSystemCollector', 'Invoke-WDSecurityCollector', 'Invoke-WDIocCollector', 'Export-WDReport')
+$missing = @($requiredFunctions | Where-Object { -not (Get-Command $_ -CommandType Function -ErrorAction SilentlyContinue) })
+$ruleCount = 0
+if ($missing.Count -eq 0) {
+    try { $ruleCount = Import-WDDetectionData } catch { $loadErrors += "rules\detection-data.json : $($_.Exception.Message)" }
+}
+if ($missing.Count -gt 0 -or $ruleCount -eq 0) {
+    Write-Host ''
+    Write-Host 'Windows Detective could not load all of its modules - aborting so no misleading report is produced.' -ForegroundColor Red
+    foreach ($e in $loadErrors) { Write-Host "  - $e" -ForegroundColor Red }
+    if ($missing.Count) { Write-Host "  Missing functions: $($missing -join ', ')" -ForegroundColor Red }
+    Write-Host '  If the message says "blocked by your antivirus software", antivirus quarantined part of the tool.' -ForegroundColor Yellow
+    Write-Host '  Re-download it, check that all files in lib\ and rules\ are present, and if needed add a temporary' -ForegroundColor Yellow
+    Write-Host '  Defender exclusion for the tool folder (standard practice for IR tooling).' -ForegroundColor Yellow
+    exit 3
 }
 
 function Show-WDBanner {

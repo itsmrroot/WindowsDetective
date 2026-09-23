@@ -58,7 +58,7 @@ function Invoke-WDProcessCollector {
             $v = Get-WDBinaryVerdict $info
             if ($v) { Add-Finding -Severity $v.Severity -Category 'Process' -Title "Running process: $($v.Reason)" -Evidence "$ev | signer: $($row.Signer) | sha256: $($row.SHA256)" -Mitre 'T1036,T1204.002' -Time $start -Source $src }
             if ($info -and $info.OriginalName -and $info.OriginalName -match '\.exe$' -and $info.OriginalName.ToLowerInvariant() -ne $p.Name.ToLowerInvariant() -and
-                $info.OriginalName -match '^(?i)(powershell|cmd|psexec|procdump|rundll32|mimikatz|nc|rclone|certutil|anydesk|plink|7z)\.exe$') {
+                ($info.OriginalName -match '^(?i)(powershell|cmd|psexec|procdump|rundll32|nc|rclone|certutil|anydesk|plink|7z)\.exe$' -or (Get-WDToolMatch $info.OriginalName))) {
                 Add-Finding -Severity High -Category 'Process' -Title 'Renamed well-known binary' -Detail "PE OriginalFilename is '$($info.OriginalName)'." -Evidence $ev -Mitre 'T1036.003' -Time $start -Source $src
             }
         }
