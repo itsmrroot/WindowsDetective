@@ -32,6 +32,7 @@
 | 🔒 **Read-only** | Never deletes, kills, quarantines or "fixes" anything on the host |
 | 🧠 **Verdict, not just data** | 56 command-line rules and 30+ persistence checks, scored into a clear verdict with a 0–100 risk score |
 | 🗺️ **MITRE ATT&CK mapped** | Every finding links to the technique it indicates |
+| 🧹 **Low noise** | Repeated events are grouped with a count, and your own known-good tools can be allowlisted |
 | 🕒 **Unified timeline** | Logons, executions, file drops, service installs and Defender events on one UTC timeline |
 | 📦 **Evidence-ready** | SHA-256 manifest, hashed ZIP archive and exported EVTX files for chain of custody |
 | 🌐 **Works offline** | The report is a single self-contained HTML file (light & dark mode) |
@@ -76,6 +77,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 | `-NoEvtx` / `-NoZip` | Skips the EVTX export or the ZIP archive |
 | `-MaxEvents <n>` | Events read per query (default 5000) |
 | `-IocPath` | Folder of IOC lists (default `iocs\`) |
+| `-AllowlistPath` | Known-good rules (default `iocs\allowlist.txt`) |
 | `-OpenReport` | Opens the HTML report when finished |
 
 </details>
@@ -218,6 +220,7 @@ Reports\
 |---|---|
 | **IOCs** | One indicator per line in `iocs\hashes.txt`, `iocs\ips.txt` or `iocs\domains.txt`, with an optional `, description`. Harmless EICAR test hashes are included so you can check matching works. |
 | **YARA** | Drop `yara64.exe` into `tools\` and your `.yar` files into `rules\`. Starter rules are included. |
+| **Allowlist** | Known-good activity in `iocs\allowlist.txt` (`hash:`, `path:` or `text:` rules, optional `\| reason`). Matching findings stay in the report as **Info**, tagged *allowlisted* with their original severity, so nothing is silently hidden. Common browser updaters are allowlisted by default. |
 | **Custom rules** | Add an entry to `commandRules` in `rules\detection-data.json` (`id`, `severity`, `mitre`, `title`, `pattern`). Tool, RMM and vulnerable-driver lists live in the same file. |
 
 Optional binaries (`winpmem`, `yara64`) are covered in [tools/README.md](tools/README.md).

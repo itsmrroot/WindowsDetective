@@ -1,0 +1,27 @@
+# Windows Detective - allowlist (known-good activity)
+# Powered by Bashar Salmo
+#
+# Findings that match a rule here are NOT hidden: they stay in the report as Info,
+# tagged "allowlisted", with their original severity - so nothing is silently lost.
+#
+# One rule per line, optionally followed by " | reason":
+#   hash:<md5|sha1|sha256>        exact file hash                      (most precise)
+#   path:<wildcard>               file path, * and ? allowed           (precise)
+#   text:<wildcard>               any text in the finding's evidence   (broadest)
+#
+# Prefer hash: and path: rules. A text: rule matches anywhere in the evidence, so an
+# attacker who includes the same text in a command would also be allowlisted.
+# Only allowlist what you have verified on THIS environment.
+
+# --- Browser / software auto-updaters (BITS downloads) ---------------------------
+text:*updates-cdn.bravesoftware.com/* | Brave browser updater
+text:*dl.google.com/* | Google software updater
+text:*edgedl.me.gvt1.com/* | Google Chrome updater
+text:*download.mozilla.org/* | Firefox updater
+text:*officecdn.microsoft.com/* | Microsoft Office updater
+
+# --- Your own tools (examples - remove the leading # to enable) ------------------
+# text:*raw.githubusercontent.com/itsmrroot/WindowsTechToolKit/* | WindowsTechToolKit self-update
+# path:C:\Users\*\AppData\Local\Temp\ttk_mon_*.ps1 | WindowsTechToolKit monitor script
+# path:C:\Users\*\Desktop\WindowsTechToolKit-main\* | WindowsTechToolKit
+# hash:E6AB8385010B3407221E4BD3E54417DCABD487E4E88D1F7A9425DAAC5F8DF3F2 | WindowsTechToolKit monitor script

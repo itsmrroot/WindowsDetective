@@ -4,7 +4,7 @@
 #  WD-SELF-MARKER (lets the tool exclude its own activity from detections)
 # =============================================================================
 
-$script:WDVersion  = '1.2.2'
+$script:WDVersion  = '1.3.0'
 $script:WDToolName = 'Windows Detective'
 $script:WDBrand    = 'Powered by Bashar Salmo'
 
@@ -52,6 +52,7 @@ function New-WDContext {
         Observed       = @{ Hashes = @{}; Ips = @{}; Domains = @{} }
         SuspiciousFiles = @{}
         MemoryImage    = ''
+        Allowlist      = New-Object System.Collections.Generic.List[object]
     }
 }
 
@@ -132,6 +133,13 @@ function ConvertFrom-WDFileTime {
 }
 
 # ----------------------------------------------------------------------------- findings / timeline / artifacts
+# Numbers glued to names (ttk_update_4309.bat) and GUIDs differ between otherwise identical events;
+# they are masked in the grouping key so repeats collapse into one finding with an occurrence count.
+function Get-WDGroupingKey {
+    param([string]$Text)
+    return (($Text -replace '\{?[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}?', '{GUID}') -replace '(?<=[_\-A-Za-z])\d{3,}(?=[._\\'' ]|$)', '#')
+}
+
 function Add-Finding {
     param(
         [Parameter(Mandatory = $true)][ValidateSet('Critical','High','Medium','Low','Info')][string]$Severity,
@@ -144,34 +152,79 @@ function Add-Finding {
         [string]$Source = ''
     )
     $Evidence = Limit-WDText $Evidence 2000
-    $key = ('{0}|{1}|{2}' -f $Category, $Title, $Evidence).ToLowerInvariant()
+    $key = ('{0}|{1}|{2}' -f $Category, $Title, (Get-WDGroupingKey $Evidence)).ToLowerInvariant()
     $ts = ConvertTo-WDTimeString $Time
     if ($script:WD.FindingIndex.ContainsKey($key)) {
         $f = $script:WD.FindingIndex[$key]
         $f.Occurrences++
         if ($ts -and (-not $f.FirstSeen -or $ts -lt $f.FirstSeen)) { $f.FirstSeen = $ts }
         if ($ts -and $ts -gt $f.LastSeen) { $f.LastSeen = $ts }
-        if ($script:WDSeverityOrder[$Severity] -lt $script:WDSeverityOrder[$f.Severity]) { $f.Severity = $Severity }
+        if (-not $f.Allowlisted -and $script:WDSeverityOrder[$Severity] -lt $script:WDSeverityOrder[$f.Severity]) { $f.Severity = $Severity }
         return
     }
+    $originalSeverity = $Severity
+    $allow = $null
+    if ($script:WD.Allowlist.Count -gt 0) { $allow = Test-WDAllowlisted "$Title`n$Evidence`n$Detail" }
+    if ($allow) {
+        $Severity = 'Info'
+        $Detail = "ALLOWLISTED (was $originalSeverity) by rule '$($allow.Rule)'$(if ($allow.Reason) { " - $($allow.Reason)" }). $Detail"
+    }
     $f = [pscustomobject][ordered]@{
-        Id          = ''
-        Severity    = $Severity
-        Category    = $Category
-        Title       = $Title
-        Detail      = (Limit-WDText $Detail 1500)
-        Evidence    = $Evidence
-        Mitre       = $Mitre
-        Source      = $Source
-        FirstSeen   = $ts
-        LastSeen    = $ts
-        Occurrences = 1
+        Id               = ''
+        Severity         = $Severity
+        Category         = $Category
+        Title            = $Title
+        Detail           = (Limit-WDText $Detail 1500)
+        Evidence         = $Evidence
+        Mitre            = $Mitre
+        Source           = $Source
+        FirstSeen        = $ts
+        LastSeen         = $ts
+        Occurrences      = 1
+        Allowlisted      = [bool]$allow
+        OriginalSeverity = $originalSeverity
     }
     $script:WD.FindingIndex[$key] = $f
     $script:WD.Findings.Add($f)
     if ($ts -and $Severity -ne 'Info') {
         Add-WDTimeline -Time $Time -Source "Finding/$Category" -Description $Title -Detail $Evidence -Severity $Severity
     }
+}
+
+# ----------------------------------------------------------------------------- allowlist
+# iocs\allowlist.txt - one rule per line:  hash:<md5|sha1|sha256> | path:<wildcard> | text:<wildcard>
+# optionally followed by " | reason". Matching findings are kept but downgraded to Info.
+function Import-WDAllowlist {
+    param([string]$Path)
+    $script:WD.Allowlist.Clear()
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return 0 }
+    foreach ($line in (Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue)) {
+        $t = $line.Trim()
+        if (-not $t -or $t.StartsWith('#')) { continue }
+        $reason = ''
+        if ($t -match '^(.*?)\s+\|\s+(.*)$') { $t = $Matches[1].Trim(); $reason = $Matches[2].Trim() }
+        if ($t -match '^(?i)(hash|path|text):(.+)$') { $type = $Matches[1].ToLowerInvariant(); $pattern = $Matches[2].Trim() }
+        elseif ($t -match '^[0-9A-Fa-f]{32}$|^[0-9A-Fa-f]{40}$|^[0-9A-Fa-f]{64}$') { $type = 'hash'; $pattern = $t }
+        else { $type = 'text'; $pattern = $t }
+        if ($type -ne 'hash') {
+            if (-not $pattern.StartsWith('*')) { $pattern = '*' + $pattern }
+            if (-not $pattern.EndsWith('*')) { $pattern = $pattern + '*' }
+        }
+        $script:WD.Allowlist.Add([pscustomobject]@{ Type = $type; Pattern = $pattern; Reason = $reason; Rule = $t; Hits = 0 })
+    }
+    return $script:WD.Allowlist.Count
+}
+
+function Test-WDAllowlisted {
+    param([string]$Text)
+    if (-not $Text) { return $null }
+    foreach ($a in $script:WD.Allowlist) {
+        $hit = $false
+        if ($a.Type -eq 'hash') { $hit = $Text.IndexOf($a.Pattern, [StringComparison]::OrdinalIgnoreCase) -ge 0 }
+        else { $hit = $Text -like $a.Pattern }
+        if ($hit) { $a.Hits++; return $a }
+    }
+    return $null
 }
 
 function Add-WDTimeline {

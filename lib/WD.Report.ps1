@@ -223,7 +223,7 @@ function Export-WDReport {
     [void]$sb.Append('</section></main>')
     [void]$sb.Append("<footer><div>$script:WDToolName v$script:WDVersion &middot; <b>Powered by Bashar Salmo</b></div><div class=""muted"">Generated $(ConvertTo-WDTimeString (Get-Date)) UTC on $(ConvertTo-WDHtml $host_) &middot; Automated triage - validate findings before acting.</div></footer>")
 
-    $fjson = ConvertTo-WDJsonSafe @($sorted | Select-Object Id, Severity, Category, Title, Detail, Evidence, Mitre, Source, FirstSeen, LastSeen, Occurrences)
+    $fjson = ConvertTo-WDJsonSafe @($sorted | Select-Object Id, Severity, Category, Title, Detail, Evidence, Mitre, Source, FirstSeen, LastSeen, Occurrences, Allowlisted, OriginalSeverity)
     $tjson = ConvertTo-WDJsonSafe @($tlHtml | Select-Object TimeUtc, Severity, Source, Description, Detail)
     [void]$sb.Append("<script id=""wd-findings"" type=""application/json"">$fjson</script>")
     [void]$sb.Append("<script id=""wd-timeline"" type=""application/json"">$tjson</script>")
@@ -310,7 +310,7 @@ function renderF(){
     if(!sevOn[f.Severity])return; if(cat&&f.Category!==cat)return;
     if(q&&(f.Id+' '+f.Title+' '+f.Evidence+' '+f.Detail+' '+f.Mitre+' '+f.Category).toLowerCase().indexOf(q)<0)return;
     n++;
-    h.push('<tr class="f" data-i="'+i+'"><td>'+esc(f.Id)+'</td><td><span class="sev sev-'+f.Severity+'">'+f.Severity+'</span></td><td>'+esc(f.Category)+'</td><td>'+esc(f.Title)+'</td><td>'+mitre(f.Mitre)+'</td><td>'+esc(f.FirstSeen)+'</td><td>'+esc(f.LastSeen)+'</td><td>'+f.Occurrences+'</td></tr>');
+    h.push('<tr class="f" data-i="'+i+'"><td>'+esc(f.Id)+'</td><td><span class="sev sev-'+f.Severity+'">'+f.Severity+'</span></td><td>'+esc(f.Category)+'</td><td>'+esc(f.Title)+(f.Allowlisted?' <span class="pill" title="Matched the allowlist - originally '+esc(f.OriginalSeverity)+'">allowlisted</span>':'')+'</td><td>'+mitre(f.Mitre)+'</td><td>'+esc(f.FirstSeen)+'</td><td>'+esc(f.LastSeen)+'</td><td>'+f.Occurrences+'</td></tr>');
   });
   fb.innerHTML=h.join('')||'<tr><td colspan="8" class="muted">No findings match the filter.</td></tr>';
   fn.textContent=n+' of '+F.length+' findings';

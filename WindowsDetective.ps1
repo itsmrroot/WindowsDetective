@@ -30,6 +30,7 @@
 .PARAMETER NoZip        Do not create a ZIP archive of the case folder.
 .PARAMETER MaxEvents    Base number of events read per query (default 5000).
 .PARAMETER IocPath      Folder with IOC lists (hashes / IPs / domains, one per line).
+.PARAMETER AllowlistPath Known-good rules; matching findings are downgraded to Info (default: iocs\allowlist.txt).
 .PARAMETER OpenReport   Open the HTML report when finished.
 
 .EXAMPLE
@@ -52,6 +53,7 @@ param(
     [switch]$NoZip,
     [ValidateRange(100, 1000000)][int]$MaxEvents = 5000,
     [string]$IocPath = '',
+    [string]$AllowlistPath = '',
     [switch]$OpenReport
 )
 
@@ -69,7 +71,7 @@ foreach ($lib in @('WD.Core.ps1', 'WD.Rules.ps1', 'WD.System.ps1', 'WD.Processes
 # A module blocked by antivirus (AMSI) or damaged in transit must stop the run - partial results would be misleading.
 $requiredFunctions = @('New-WDContext', 'Import-WDDetectionData', 'Invoke-WDCommandCheck', 'Get-WDToolMatch', 'Test-WDVulnerableDriver', 'Get-WDMitreName',
     'Invoke-WDSystemCollector', 'Invoke-WDProcessCollector', 'Invoke-WDNetworkCollector', 'Invoke-WDPersistenceCollector', 'Invoke-WDExecutionCollector',
-    'Invoke-WDEventLogCollector', 'Invoke-WDFileSystemCollector', 'Invoke-WDSecurityCollector', 'Invoke-WDIocCollector', 'Export-WDReport')
+    'Invoke-WDEventLogCollector', 'Invoke-WDFileSystemCollector', 'Invoke-WDSecurityCollector', 'Invoke-WDIocCollector', 'Export-WDReport', 'Import-WDAllowlist')
 $missing = @($requiredFunctions | Where-Object { -not (Get-Command $_ -CommandType Function -ErrorAction SilentlyContinue) })
 $ruleCount = 0
 if ($missing.Count -eq 0) {
@@ -113,6 +115,7 @@ if ($Quick -and $Deep) { Write-Host '-Quick and -Deep are mutually exclusive; us
 # Every scan session is saved under the tool's own Reports folder unless another location is given.
 if (-not $OutputPath) { $OutputPath = Join-Path $toolRoot 'Reports' }
 if (-not $IocPath) { $IocPath = Join-Path $toolRoot 'iocs' }
+if (-not $AllowlistPath) { $AllowlistPath = Join-Path $IocPath 'allowlist.txt' }
 if (-not $CaseId) { $CaseId = 'WD-' + (Get-Date -Format 'yyyyMMdd-HHmmss') }
 $effectiveMax = $MaxEvents
 if ($Quick) { $effectiveMax = [Math]::Max(500, [int]($MaxEvents / 4)) }
@@ -137,6 +140,8 @@ $script:WD.LogFile = Join-Path $script:WD.CaseDir 'collection.log'
 
 Write-WDLog "$script:WDToolName v$script:WDVersion - $script:WDBrand" INFO
 Write-WDLog "Case $CaseId | analyst $Analyst | host $env:COMPUTERNAME | window $Days days | output $($script:WD.CaseDir)" INFO
+$allowCount = Import-WDAllowlist $AllowlistPath
+if ($allowCount -gt 0) { Write-WDLog "Allowlist: $allowCount known-good rule(s) loaded from $AllowlistPath" INFO }
 if (-not $script:WD.IsAdmin) {
     Write-WDLog 'NOT running as Administrator - Security log, Amcache, hidden tasks and other users will be missed. Re-run elevated for a complete investigation.' WARN
 }
@@ -170,6 +175,10 @@ finally {
     Dismount-WDUserHives
 }
 
+if ($script:WD.Allowlist.Count -gt 0) {
+    Save-WDArtifact -Name 'AllowlistHits' -Section 'Threat Intel' -Data @($script:WD.Allowlist | Select-Object Type, Rule, Reason, Hits) -Description 'Allowlist rules and how many findings each one downgraded'
+    $script:WD.SystemInfo['Allowlisted Findings'] = [string]@($script:WD.Findings | Where-Object { $_.Allowlisted }).Count
+}
 Write-WDLog 'Building report' STEP
 $report = Export-WDReport
 Write-WDManifest
@@ -215,6 +224,8 @@ Write-Host ''
 Write-Host ('=' * 78) -ForegroundColor DarkGray
 Write-Host ("  VERDICT: {0}   (risk score {1}/100)" -f $verdict.Level, $verdict.Score) -ForegroundColor $color
 Write-Host ("  Critical {0} | High {1} | Medium {2} | Low {3} | Info {4}" -f $counts.Critical, $counts.High, $counts.Medium, $counts.Low, $counts.Info)
+$allowed = @($script:WD.Findings | Where-Object { $_.Allowlisted }).Count
+if ($allowed) { Write-Host "  $allowed finding(s) matched the allowlist and were downgraded to Info" -ForegroundColor DarkGray }
 Write-Host ''
 foreach ($f in @($script:WD.Findings | Where-Object { $_.Severity -in @('Critical', 'High') } | Sort-Object Id | Select-Object -First 15)) {
     $c = 'DarkYellow'; if ($f.Severity -eq 'Critical') { $c = 'Red' }

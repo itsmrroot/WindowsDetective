@@ -23,7 +23,7 @@ function Invoke-WDIocCollector {
     $dir = $script:WD.Options.IocPath
     if (-not $dir -or -not (Test-Path -LiteralPath $dir)) { Write-WDLog "IOC directory not found: $dir" WARN; return }
     $hashes = @{}; $ips = @{}; $domains = @{}
-    foreach ($f in @(Get-ChildItem -LiteralPath $dir -Filter '*.txt' -File -ErrorAction SilentlyContinue)) {
+    foreach ($f in @(Get-ChildItem -LiteralPath $dir -Filter '*.txt' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'allowlist.txt' })) {
         $set = Read-WDIocFile $f.FullName
         foreach ($k in $set.Keys) {
             if ($k -match '^[0-9a-f]{32}$|^[0-9a-f]{40}$|^[0-9a-f]{64}$') { $hashes[$k] = "$($set[$k]) [$($f.Name)]" }
