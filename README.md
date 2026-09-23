@@ -45,19 +45,19 @@
 
 **Option 1: double-click**
 
-Right-click **`Run-WindowsDetective.bat`** and choose **Run as administrator**. The report opens automatically when the run finishes.
+Right-click **`Run-WindowsDetective.bat`** and choose **Run as administrator**. The report opens automatically when the run finishes, and every scan session is saved in the **`Reports`** folder next to the tool.
 
 **Option 2: PowerShell**
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\WindowsDetective.ps1 -CaseId IR-2026-042 -Analyst "Jane Doe" -OutputPath E:\Cases -OpenReport
+.\WindowsDetective.ps1 -CaseId IR-2026-042 -Analyst "Jane Doe" -OutputPath E:\Reports -OpenReport
 ```
 
 **Option 3: full incident collection** (memory first, deep checks, raw evidence)
 
 ```powershell
-.\WindowsDetective.ps1 -MemoryDump -Deep -CollectRawArtifacts -LoadUserHives -Days 90 -OutputPath E:\Cases
+.\WindowsDetective.ps1 -MemoryDump -Deep -CollectRawArtifacts -LoadUserHives -Days 90 -OutputPath E:\Reports
 ```
 
 <details>
@@ -67,7 +67,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 |---|---|
 | `-Days <n>` | Investigation window (default **30**) |
 | `-CaseId`, `-Analyst` | Printed in the report for chain of custody |
-| `-OutputPath` | Where the case folder is written (use external media) |
+| `-OutputPath` | Where scan sessions are saved (default: `Reports\` inside the tool folder; use external media for evidential work) |
 | `-Quick` | Fast triage: fewer events, smaller file sweep |
 | `-Deep` | Loaded-DLL scan, System32 change check, deeper file sweep, 4× more events |
 | `-CollectRawArtifacts` | Copies registry hives, Amcache, SRUM, WMI repository, browser history, jump lists, Prefetch, Tasks, Defender MPLog and flagged files |
@@ -191,19 +191,23 @@ Defender status, exclusions and detection history • Registered AV products •
 
 The report also generates recommended next steps from what was found: containment, credential resets, ransomware handling and so on.
 
+Every scan session is saved in the tool's own **`Reports`** folder, and one line per session is added to `Reports\scan_history.csv` (time, host, verdict, risk score, finding counts, report path) so earlier scans are easy to find and compare. The `Reports` folder is git-ignored, so scan results never end up in the repository.
+
 ```text
-Cases\WDCase_<HOST>_<timestamp>\
-├── WindowsDetective_Report.html   interactive report: verdict, findings, ATT&CK, timeline, artifacts
-├── findings.json / findings.csv   all findings with severity, evidence and MITRE ids
-├── timeline.csv                   unified UTC timeline from every source
-├── system_info.json               host profile
-├── collection.log                 what ran, when, and any errors
-├── manifest.sha256.csv            SHA-256 of every output file (chain of custody)
-├── raw\                           every artifact as CSV, process tree, audit policy, observed indicators
-├── evtx\                          exported event logs (Hayabusa / Chainsaw / EvtxECmd ready)
-├── files\                         Amcache, PSReadLine histories, raw artifacts, flagged files as <sha256>.bin
-└── memory\                        RAM image (only with -MemoryDump, kept out of the ZIP)
-WDCase_<HOST>_<timestamp>.zip  +  .zip.sha256
+Reports\
+├── scan_history.csv               one line per scan session
+├── WDCase_<HOST>_<timestamp>.zip  (+ .zip.sha256) archive of the session
+└── WDCase_<HOST>_<timestamp>\
+    ├── WindowsDetective_Report.html   interactive report: verdict, findings, ATT&CK, timeline, artifacts
+    ├── findings.json / findings.csv   all findings with severity, evidence and MITRE ids
+    ├── timeline.csv                   unified UTC timeline from every source
+    ├── system_info.json               host profile
+    ├── collection.log                 what ran, when, and any errors
+    ├── manifest.sha256.csv            SHA-256 of every output file (chain of custody)
+    ├── raw\                           every artifact as CSV, process tree, audit policy, observed indicators
+    ├── evtx\                          exported event logs (Hayabusa / Chainsaw / EvtxECmd ready)
+    ├── files\                         Amcache, PSReadLine histories, raw artifacts, flagged files as <sha256>.bin
+    └── memory\                        RAM image (only with -MemoryDump, kept out of the ZIP)
 ```
 
 ---
@@ -234,7 +238,7 @@ The self-test checks that the rules compile, that common benign command lines do
 
 > [!IMPORTANT]
 > - Run as **Administrator**. Without it the Security log, Amcache, hidden tasks and other users' data are unavailable, and the report warns you.
-> - Write output to **external media** (`-OutputPath E:\Cases`) to avoid overwriting deleted data on the evidence disk.
+> - Write output to **external media** (`-OutputPath E:\Reports`) to avoid overwriting deleted data on the evidence disk.
 > - Capture **memory first** (`-MemoryDump`) when fileless malware is suspected. Never reboot a suspect host before memory capture.
 
 > [!WARNING]

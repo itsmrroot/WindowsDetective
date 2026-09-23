@@ -1,4 +1,5 @@
 # Case output contains sensitive evidence - never commit it
+Reports/
 Cases/
 WDCase_*/
 WDCase_*.zip

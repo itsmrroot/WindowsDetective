@@ -16,7 +16,7 @@
     The tool only reads from the host. Run it from external/USB media where possible and
     write the output to external media to minimise footprint on the evidence disk.
 
-.PARAMETER OutputPath   Folder where the case folder is created (default: .\Cases next to the tool).
+.PARAMETER OutputPath   Folder where each scan session is saved (default: the Reports folder inside the tool directory).
 .PARAMETER Days         Investigation window in days (default 30).
 .PARAMETER CaseId       Case / ticket reference printed in the report.
 .PARAMETER Analyst      Name of the analyst (default: current user).
@@ -110,7 +110,8 @@ if ([Environment]::OSVersion.Platform -ne 'Win32NT') {
 }
 if ($Quick -and $Deep) { Write-Host '-Quick and -Deep are mutually exclusive; using -Deep.' -ForegroundColor Yellow; $Quick = $false }
 
-if (-not $OutputPath) { $OutputPath = Join-Path $toolRoot 'Cases' }
+# Every scan session is saved under the tool's own Reports folder unless another location is given.
+if (-not $OutputPath) { $OutputPath = Join-Path $toolRoot 'Reports' }
 if (-not $IocPath) { $IocPath = Join-Path $toolRoot 'iocs' }
 if (-not $CaseId) { $CaseId = 'WD-' + (Get-Date -Format 'yyyyMMdd-HHmmss') }
 $effectiveMax = $MaxEvents
@@ -140,7 +141,7 @@ if (-not $script:WD.IsAdmin) {
     Write-WDLog 'NOT running as Administrator - Security log, Amcache, hidden tasks and other users will be missed. Re-run elevated for a complete investigation.' WARN
 }
 if ($script:WD.CaseDir.Substring(0, 2) -eq $env:SystemDrive) {
-    Write-WDLog 'Output is on the system drive. For evidential work prefer external media (-OutputPath E:\Cases) to avoid overwriting deleted data.' WARN
+    Write-WDLog 'Output is on the system drive. For evidential work prefer external media (-OutputPath E:\Reports) to avoid overwriting deleted data.' WARN
 }
 
 $exitCode = 0
@@ -189,6 +190,16 @@ if (-not $NoZip) {
 # Console summary
 $counts = Get-WDSeverityCounts
 $verdict = Get-WDVerdict
+
+# One line per scan session in Reports\scan_history.csv, so earlier sessions are easy to find and compare.
+try {
+    $history = Join-Path (Split-Path -Parent $script:WD.CaseDir) 'scan_history.csv'
+    [pscustomobject][ordered]@{
+        ScanStartUtc = (ConvertTo-WDTimeString $script:WD.StartTime); Host = $env:COMPUTERNAME; CaseId = $CaseId; Analyst = $Analyst
+        Verdict = $verdict.Level; RiskScore = $verdict.Score; Critical = $counts.Critical; High = $counts.High; Medium = $counts.Medium
+        Low = $counts.Low; Info = $counts.Info; ToolVersion = $script:WDVersion; Report = $report; Archive = $zip
+    } | Export-Csv -LiteralPath $history -NoTypeInformation -Encoding UTF8 -Append
+} catch { Write-WDLog "Could not update scan history: $($_.Exception.Message)" WARN }
 $color = switch ($verdict.Css) { 'crit' { 'Red' } 'high' { 'DarkYellow' } 'med' { 'Yellow' } default { 'Green' } }
 Write-Host ''
 Write-Host ('=' * 78) -ForegroundColor DarkGray
@@ -202,6 +213,7 @@ foreach ($f in @($script:WD.Findings | Where-Object { $_.Severity -in @('Critica
 Write-Host ''
 Write-Host "  Report : $report" -ForegroundColor Cyan
 Write-Host "  Case   : $($script:WD.CaseDir)" -ForegroundColor Cyan
+Write-Host "  History: $(Join-Path (Split-Path -Parent $script:WD.CaseDir) 'scan_history.csv')" -ForegroundColor Cyan
 if ($zip) { Write-Host "  Archive: $zip" -ForegroundColor Cyan }
 Write-Host ('=' * 78) -ForegroundColor DarkGray
 Write-Host '  Windows Detective - Powered by Bashar Salmo' -ForegroundColor Yellow
