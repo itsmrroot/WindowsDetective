@@ -88,7 +88,17 @@ function Invoke-WDFileSystemCollector {
                 if ($f.Length -le 2MB) {
                     $content = ''
                     try { $content = [IO.File]::ReadAllText($f.FullName) } catch { }
-                    if ((Invoke-WDCommandCheck -Text $content -Source "Script file $($f.FullName)" -Time $when -Category 'Files') -gt 0) { $flagged = $true }
+                    $hits = @(Test-WDCommandLine $content)
+                    if ($hits.Count -gt 0) {
+                        # Script *content* matches are weaker evidence than executed command lines, so they are
+                        # reported once per file and one severity level lower.
+                        $worst = ($hits | Sort-Object { $script:WDSeverityOrder[$_.Severity] } | Select-Object -First 1).Severity
+                        $sev = @{ Critical = 'High'; High = 'Medium'; Medium = 'Low'; Low = 'Low' }[$worst]
+                        $titles = ($hits | ForEach-Object { "$($_.Id) $($_.Title)" }) -join '; '
+                        $mitre = (($hits | ForEach-Object { $_.Mitre -split ',' }) | Select-Object -Unique) -join ','
+                        Add-Finding -Severity $sev -Category 'Files' -Title "Script file contains suspicious code ($($hits.Count) rule(s))" -Detail "Matched: $titles. Review the script - admin and developer tools can trigger these rules too." -Evidence $ev -Mitre $mitre -Time $when -Source 'FileSystem'
+                        $flagged = $true
+                    }
                 }
             }
             if ($f.Extension -match '(?i)^\.(iso|img|vhd|vhdx)$' -and $zone -and $zone.ZoneId -eq '3') {

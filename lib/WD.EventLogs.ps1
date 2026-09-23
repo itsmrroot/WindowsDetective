@@ -279,19 +279,36 @@ function Invoke-WDSystemLog {
 function Invoke-WDPowerShellLogs {
     $max = $script:WD.Options.MaxEvents
     $rows = New-Object System.Collections.Generic.List[object]
+    $toolRoot = [string]$script:WD.Options.ToolRoot
     foreach ($log in @('Microsoft-Windows-PowerShell/Operational', 'PowerShellCore/Operational')) {
-        foreach ($e in (Get-WDEvents -LogName $log -Id 4104 -Max ($max * 2))) {
+        $events = @(Get-WDEvents -LogName $log -Id 4104 -Max ($max * 2))
+        # PowerShell logs every script block it compiles, including this tool's own code and the code
+        # PowerShell generates for the cmdlets it calls. Any process that ran this tool (now or in an
+        # earlier run) is identified by a script block from the tool's files and skipped entirely.
+        $toolPids = @{ [int]$PID = $true }
+        foreach ($e in $events) {
             $d = $e.Data
-            $text = [string]$d.ScriptBlockText
-            if ($d.Path -match $script:WDSelfExclusionRx -or $d.Path -match '(?i)\\lib\\WD\.[A-Za-z]+\.ps1$' -or $text -match 'WD-SELF-MARKER') { continue }
-            $hits = Invoke-WDCommandCheck -Text $text -Source "PowerShell 4104 (ScriptBlockId $($d.ScriptBlockId))" -Time $e.Time -Context "Script path: $($d.Path)"
-            if ($e.Level -eq 3) {
-                Add-Finding -Severity Medium -Category 'Execution' -Title 'PowerShell engine flagged a script block as suspicious (4104 Warning)' -Evidence (Limit-WDText $text 1500) -Mitre 'T1059.001' -Time $e.Time -Source $log
-            }
-            if ($hits -gt 0 -or $e.Level -eq 3) {
-                $rows.Add([pscustomobject][ordered]@{ TimeUtc = (ConvertTo-WDTimeString $e.Time); Log = $log; Path = $d.Path; ScriptBlockId = $d.ScriptBlockId; Part = "$($d.MessageNumber)/$($d.MessageTotal)"; Text = (Limit-WDText $text 4000) })
+            if ((Test-WDSelfPath ([string]$d.Path)) -or ($toolRoot -and ([string]$d.Path).StartsWith($toolRoot, [StringComparison]::OrdinalIgnoreCase)) -or ([string]$d.ScriptBlockText) -match 'WD-SELF-MARKER') {
+                $toolPids[[int]$e.ProcessId] = $true
             }
         }
+        $seenBlocks = @{}
+        foreach ($e in $events) {
+            if ($toolPids.ContainsKey([int]$e.ProcessId)) { continue }
+            $d = $e.Data
+            $text = [string]$d.ScriptBlockText
+            $blockId = [string]$d.ScriptBlockId
+            $hits = Invoke-WDCommandCheck -Text $text -Source "PowerShell 4104 (ScriptBlockId $blockId, PID $($e.ProcessId))" -Time $e.Time -Context "Script path: $($d.Path)"
+            # Large scripts are split into several 4104 parts - report each flagged script once.
+            if ($e.Level -eq 3 -and -not $seenBlocks.ContainsKey($blockId)) {
+                $seenBlocks[$blockId] = $true
+                Add-Finding -Severity Medium -Category 'Execution' -Title 'PowerShell engine flagged a script block as suspicious (4104 Warning)' -Detail "ScriptBlockId $blockId, part $($d.MessageNumber)/$($d.MessageTotal), process $($e.ProcessId), path '$($d.Path)'." -Evidence (Limit-WDText $text 1500) -Mitre 'T1059.001' -Time $e.Time -Source $log
+            }
+            if ($hits -gt 0 -or $e.Level -eq 3) {
+                $rows.Add([pscustomobject][ordered]@{ TimeUtc = (ConvertTo-WDTimeString $e.Time); Log = $log; PID = $e.ProcessId; Path = $d.Path; ScriptBlockId = $blockId; Part = "$($d.MessageNumber)/$($d.MessageTotal)"; Text = (Limit-WDText $text 4000) })
+            }
+        }
+        if ($toolPids.Count -gt 1) { Write-WDLog "PowerShell log: ignored script blocks from $($toolPids.Count - 1) process(es) that ran Windows Detective" INFO }
     }
     Save-WDArtifact -Name 'PowerShellScriptBlocks' -Section 'Event Logs' -Data $rows -Description 'Suspicious PowerShell script blocks (4104)'
 

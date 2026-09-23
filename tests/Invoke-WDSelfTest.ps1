@@ -59,6 +59,17 @@ Assert-WD ((Get-WDToolMatch 'RCLONE.EXE-1A2B3C4D.pf').Name -eq 'rclone') 'prefet
 Assert-WD ((ConvertTo-WDTimeString '2026-01-02 03:04:05') -eq '2026-01-02 03:04:05') 'UTC strings not shifted'
 Assert-WD (Test-WDSelfPath 'amsi:_C:\Users\X\Desktop\WindowsDetective-main\lib\WD.Rules.ps1') 'AV detection of own files recognised'
 Assert-WD (-not (Test-WDSelfPath 'file:_C:\Users\X\Downloads\invoice.exe')) 'real detection not treated as self'
+foreach ($ok in @('C:\Windows\SysArm32\cmd.exe', 'C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe', '\Device\HarddiskVolume3\Windows\System32\wscript.exe', '%SystemRoot%\System32\cmd.exe')) {
+    Assert-WD ($null -eq (Test-WDMasquerade $ok)) "legitimate system path not masquerading: $ok"
+}
+$b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes('Write-Output "hello from selftest"'))
+Assert-WD ((ConvertFrom-WDEncodedCommand "powershell.exe -NoProfile -EncodedCommand $b64") -eq 'Write-Output "hello from selftest"') 'encoded command is decoded'
+$before = $script:WD.Findings.Count
+[void](Invoke-WDCommandCheck -Text "powershell.exe -enc $b64" -Source 'selftest')
+$enc = $script:WD.Findings | Where-Object { $_.Source -eq 'selftest' -and $_.Detail -match 'DECODED COMMAND: Write-Output' }
+Assert-WD ($null -ne $enc) 'decoded command shown in finding detail'
+$script:WD.Findings.Clear(); $script:WD.FindingIndex.Clear(); $script:WD.Timeline.Clear()
+Assert-WD ((Get-WDFileInfo 'C:\Program Files\x\Update.exe"" \c').Exists -eq $false) 'malformed path handled without error'
 
 # ---- tool code must not embed attack keywords that make antivirus (AMSI) block it
 $bait = '(?i)(mimi' + 'katz|sekur' + 'lsa|cobalt' + 'strike|cobalt strike|download' + 'string|amsi' + 'utils|amsiinit' + 'failed|virtual' + 'alloc|invoke-' + 'shellcode)'

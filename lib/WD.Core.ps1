@@ -4,7 +4,7 @@
 #  WD-SELF-MARKER (lets the tool exclude its own activity from detections)
 # =============================================================================
 
-$script:WDVersion  = '1.1.0'
+$script:WDVersion  = '1.2.0'
 $script:WDToolName = 'Windows Detective'
 $script:WDBrand    = 'Powered by Bashar Salmo'
 
@@ -262,8 +262,13 @@ function Get-WDFileInfo {
         SHA256 = ''; SigStatus = ''; Signer = ''; IsMicrosoft = $false; IsPE = ($p -match $script:WDPeExtRx)
         Company = ''; Description = ''; OriginalName = ''
     }
+    # Malformed command lines (stray quotes etc.) are not valid paths - record as missing.
+    if ($p.IndexOfAny([IO.Path]::GetInvalidPathChars()) -ge 0 -or $p.IndexOfAny([char[]]'*?') -ge 0) {
+        $script:WD.FileCache[$p] = $info
+        return $info
+    }
     try {
-        if (Test-Path -LiteralPath $p -PathType Leaf) {
+        if (Test-Path -LiteralPath $p -PathType Leaf -ErrorAction SilentlyContinue) {
             $fi = Get-Item -LiteralPath $p -Force -ErrorAction Stop
             $info.Exists   = $true
             $info.Size     = $fi.Length
@@ -359,6 +364,17 @@ public static class WDRegNative {
     }
     try {
         $k = Get-Item -LiteralPath $Path -ErrorAction Stop
+        try { return (Get-WDRegKeyLastWriteFromKey $k) } finally { $k.Dispose() }
+    } catch { }
+    return $null
+}
+
+function Get-WDRegKeyLastWriteFromKey {
+    param($Key)
+    if (-not $script:WDRegNative) { [void](Get-WDRegKeyLastWrite 'HKLM:\SOFTWARE') }
+    if (-not $script:WDRegNative -or -not $Key) { return $null }
+    try {
+        $k = $Key
         $ft = [long]0
         $rc = [WDRegNative]::RegQueryInfoKey($k.Handle, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero,
             [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero, [ref]$ft)

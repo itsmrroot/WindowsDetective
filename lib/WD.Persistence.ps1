@@ -190,7 +190,7 @@ function Invoke-WDScheduledTasks {
             })
             if ($a.CimClass.CimClassName -ne 'MSFT_TaskExecAction') { continue }
             $exePath = Get-WDExecutablePath $a.Execute
-            $trustMs = $isMs -and ($exePath -match '(?i)^[a-z]:\\windows\\' -or $exePath -notmatch '\\')
+            $trustMs = $isMs -and ($exePath -match '(?i)^[a-z]:\\windows\\' -or $exePath -notmatch '\\' -or (Get-WDFileInfo $exePath).IsMicrosoft)
             Add-WDAutorun -Category 'Scheduled task' -Location $full -Name $t.TaskName -Command $cmd -User $t.Principal.UserId -Mitre 'T1053.005' -KeyTime $regDate -InterpreterSeverity 'Medium' -TrustMicrosoftInterpreters:$trustMs
             if ($regDate -and $regDate -ge $script:WD.Since) {
                 $sev = 'Low'; if (-not $isMs) { $sev = 'Medium' }

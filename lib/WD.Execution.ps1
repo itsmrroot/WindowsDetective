@@ -113,29 +113,47 @@ function Invoke-WDAmcache {
     # Parse a working copy so the preserved evidence copy stays untouched.
     $work = Join-Path $script:WD.FilesDir 'Amcache_parse.hve'
     Copy-Item -LiteralPath $dst -Destination $work -Force
-    $mount = 'HKLM\WD_Amcache'
-    & reg.exe load $mount $work 2>&1 | Out-Null
+    $mount = 'WD_Amcache'
+    & reg.exe load "HKLM\$mount" $work 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { Write-WDLog 'Amcache hive could not be mounted (kept raw copy for offline analysis)' WARN; Remove-Item -LiteralPath $work -Force -ErrorAction SilentlyContinue; return }
     $rows = New-Object System.Collections.Generic.List[object]
+    # Raw .NET keys (disposed explicitly) instead of the registry provider, whose cached handles
+    # would keep the hive mounted on the evidence host after parsing.
+    $root = $null
     try {
-        foreach ($k in @(Get-ChildItem -LiteralPath 'HKLM:\WD_Amcache\Root\InventoryApplicationFile' -ErrorAction SilentlyContinue)) {
-            $p = Get-ItemProperty -LiteralPath $k.PSPath -ErrorAction SilentlyContinue
-            if (-not $p) { continue }
-            $sha1 = ([string]$p.FileId) -replace '^0000', ''
-            $lw = Get-WDRegKeyLastWrite $k.PSPath
-            $rows.Add([pscustomobject][ordered]@{
-                Path = $p.LowerCaseLongPath; Name = $p.Name; SHA1 = $sha1; Publisher = $p.Publisher; Product = $p.ProductName
-                Version = $p.Version; LinkDate = $p.LinkDate; Size = $p.Size; KeyLastWriteUtc = (ConvertTo-WDTimeString $lw)
-            })
-            if ($sha1) { Add-WDObserved -Type Hashes -Value $sha1 -Source "Amcache: $($p.LowerCaseLongPath)" }
-            if ($lw -and $lw -ge $script:WD.Since.ToUniversalTime()) { Add-WDTimeline -Time $lw -Source 'Amcache' -Description "Program recorded in Amcache: $($p.Name)" -Detail "$($p.LowerCaseLongPath) sha1 $sha1" }
-            Test-WDExecutedPath -Path $p.LowerCaseLongPath -Source 'Amcache' -Time $lw -Extra "SHA1 $sha1." -NoPathCheck
+        $root = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey("$mount\Root\InventoryApplicationFile")
+        if ($root) {
+            foreach ($name in $root.GetSubKeyNames()) {
+                $k = $root.OpenSubKey($name)
+                if (-not $k) { continue }
+                try {
+                    $path = [string]$k.GetValue('LowerCaseLongPath'); $fileName = [string]$k.GetValue('Name')
+                    $sha1 = ([string]$k.GetValue('FileId')) -replace '^0000', ''
+                    $lw = Get-WDRegKeyLastWriteFromKey $k
+                    $rows.Add([pscustomobject][ordered]@{
+                        Path = $path; Name = $fileName; SHA1 = $sha1; Publisher = [string]$k.GetValue('Publisher'); Product = [string]$k.GetValue('ProductName')
+                        Version = [string]$k.GetValue('Version'); LinkDate = [string]$k.GetValue('LinkDate'); Size = $k.GetValue('Size'); KeyLastWriteUtc = (ConvertTo-WDTimeString $lw)
+                    })
+                    if ($sha1) { Add-WDObserved -Type Hashes -Value $sha1 -Source "Amcache: $path" }
+                    if ($lw -and $lw -ge $script:WD.Since.ToUniversalTime()) { Add-WDTimeline -Time $lw -Source 'Amcache' -Description "Program recorded in Amcache: $fileName" -Detail "$path sha1 $sha1" }
+                    Test-WDExecutedPath -Path $path -Source 'Amcache' -Time $lw -Extra "SHA1 $sha1." -NoPathCheck
+                } finally { $k.Dispose() }
+            }
         }
     } finally {
-        [gc]::Collect(); [gc]::WaitForPendingFinalizers()
-        & reg.exe unload $mount 2>&1 | Out-Null
-        Remove-Item -LiteralPath $work -Force -ErrorAction SilentlyContinue
-        Get-ChildItem -LiteralPath $script:WD.FilesDir -Filter 'Amcache_parse.hve*' -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+        if ($root) { $root.Dispose() }
+        $unloaded = $false
+        foreach ($attempt in 1..5) {
+            [gc]::Collect(); [gc]::WaitForPendingFinalizers()
+            & reg.exe unload "HKLM\$mount" 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { $unloaded = $true; break }
+            Start-Sleep -Milliseconds 500
+        }
+        if ($unloaded) {
+            Get-ChildItem -LiteralPath $script:WD.FilesDir -Filter 'Amcache_parse.hve*' -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+        } else {
+            Write-WDLog "Could not unmount HKLM\$mount - it is released at the next reboot, or run: reg unload HKLM\$mount" WARN
+        }
     }
     Save-WDArtifact -Name 'Amcache' -Section 'Execution' -Data $rows -Description 'Amcache InventoryApplicationFile (path + SHA1 of executed/installed programs)'
 }

@@ -46,16 +46,36 @@ function Test-WDCommandLine {
     return $hits
 }
 
+# Decodes the payload of "powershell -EncodedCommand <base64>" so analysts see the real command.
+function ConvertFrom-WDEncodedCommand {
+    param([string]$Text)
+    $m = [regex]::Match($Text, '(?i)\s[-/]e[a-z]*\s+["'']?([A-Za-z0-9+/]{20,}={0,2})')
+    if (-not $m.Success) { return '' }
+    try {
+        $b64 = $m.Groups[1].Value
+        while ($b64.Length % 4) { $b64 += '=' }
+        $bytes = [System.Convert]::FromBase64String($b64)
+        $decoded = [Text.Encoding]::Unicode.GetString($bytes)
+        if ($decoded -match '[^\x09\x0A\x0D\x20-\x7E]{4,}') { $decoded = [Text.Encoding]::UTF8.GetString($bytes) }
+        return $decoded.Trim([char]0)
+    } catch { return '' }
+}
+
 # Runs all command rules against a text and raises one finding per matching rule.
 function Invoke-WDCommandCheck {
-    param([string]$Text, [string]$Source, $Time = $null, [string]$Context = '', [string]$Category = 'Execution')
+    param([string]$Text, [string]$Source, $Time = $null, [string]$Context = '', [string]$Category = 'Execution', [switch]$NoDecode)
     $hits = Test-WDCommandLine $Text
+    $decoded = ''
+    if (-not $NoDecode -and ($hits | Where-Object { $_.Id -eq 'CMD-001' })) { $decoded = ConvertFrom-WDEncodedCommand $Text }
     foreach ($r in $hits) {
         $detail = "Rule $($r.Id) matched in $Source."
         if ($Context) { $detail += " $Context" }
+        if ($decoded -and $r.Id -eq 'CMD-001') { $detail += " DECODED COMMAND: $(Limit-WDText $decoded 800)" }
         Add-Finding -Severity $r.Severity -Category $Category -Title $r.Title -Detail $detail -Evidence $Text -Mitre $r.Mitre -Time $Time -Source $Source
     }
-    return $hits.Count
+    $count = $hits.Count
+    if ($decoded) { $count += Invoke-WDCommandCheck -Text $decoded -Source "$Source (decoded -EncodedCommand)" -Time $Time -Context $Context -Category $Category -NoDecode }
+    return $count
 }
 
 # ----------------------------------------------------------------------------- process relationships
@@ -113,10 +133,14 @@ $script:WDLookalikeNames = @(
 function Test-WDMasquerade {
     param([string]$Path)
     if (-not $Path) { return $null }
+    # Normalise the path forms used by BAM, UserAssist and Amcache before comparing.
+    $Path = [Environment]::ExpandEnvironmentVariables($Path) -replace '^\\\\\?\\', '' -replace '^(?i)\\Device\\HarddiskVolume\d+', 'C:' -replace '^(?i)%SystemRoot%', 'C:\Windows'
     $leaf = (Split-Path $Path -Leaf).ToLowerInvariant()
     if ($script:WDLookalikeNames -contains $leaf) { return "Filename '$leaf' imitates a Windows system binary" }
     if ($script:WDSystemBinaries.ContainsKey($leaf)) {
         $exp = $script:WDSystemBinaries[$leaf]
+        # 32-bit copies live in SysWOW64 (x64) or SysArm32 / SyChpe32 (Windows on ARM).
+        $exp = $exp -replace 'syswow64', '(syswow64|sysarm32|sychpe32)'
         if ($exp -eq '.') { $rx = '(?i)^[a-z]:\\windows\\[^\\]+$' } else { $rx = '(?i)^[a-z]:\\windows\\(' + $exp + ')\\[^\\]+$' }
         if ($Path -notmatch $rx -and $Path -notmatch '(?i)\\WinSxS\\') { return "System binary name '$leaf' running from non-standard location" }
     }

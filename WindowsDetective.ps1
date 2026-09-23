@@ -178,8 +178,18 @@ $zip = ''
 if (-not $NoZip) {
     try {
         $zip = "$($script:WD.CaseDir).zip"
-        $items = @(Get-ChildItem -LiteralPath $script:WD.CaseDir -Force | Where-Object { $_.Name -ne 'memory' })
-        Compress-Archive -LiteralPath $items.FullName -DestinationPath $zip -Force
+        # Stage everything except the memory image and working copies that may still be locked.
+        $stage = Join-Path ([IO.Path]::GetTempPath()) ("WDZip_" + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $stage -Force | Out-Null
+        foreach ($f in @(Get-ChildItem -LiteralPath $script:WD.CaseDir -Recurse -File -Force)) {
+            $rel = $f.FullName.Substring($script:WD.CaseDir.Length + 1)
+            if ($rel -like 'memory\*' -or $f.Name -like 'Amcache_parse.hve*') { continue }
+            $dest = Join-Path $stage $rel
+            New-Item -ItemType Directory -Path (Split-Path -Parent $dest) -Force | Out-Null
+            try { Copy-Item -LiteralPath $f.FullName -Destination $dest -Force -ErrorAction Stop } catch { Write-WDLog "Not archived (locked): $rel" WARN }
+        }
+        Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
+        Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
         $zh = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
         Set-Content -LiteralPath "$zip.sha256" -Value "$zh  $(Split-Path $zip -Leaf)" -Encoding ASCII
         Write-WDLog "Case archive: $zip (SHA-256 $zh)" OK
