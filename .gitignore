@@ -1,0 +1,7 @@
+# Case output contains sensitive evidence - never commit it
+Cases/
+WDCase_*/
+WDCase_*.zip
+WDCase_*.zip.sha256
+# Third-party binaries are downloaded by the user
+tools/*.exe

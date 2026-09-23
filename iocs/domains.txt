@@ -1,0 +1,10 @@
+# Windows Detective - known-bad domains
+# Powered by Bashar Salmo
+#
+# One domain per line, optionally followed by a comma and a description.
+# A domain also matches its sub-domains (evil.example matches cdn.evil.example).
+# Use *.example.com to match only sub-domains.
+# Matched against the DNS client cache and Sysmon DNS / network events.
+#
+# Example (reserved .example TLD - will never match real traffic):
+# c2.malicious.example, Example C2 domain from ticket IR-0000

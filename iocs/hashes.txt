@@ -1,0 +1,11 @@
+# Windows Detective - known-bad file hashes
+# Powered by Bashar Salmo
+#
+# One hash per line: MD5, SHA1 or SHA256, optionally followed by a comma and a description.
+# Anything after '#' is ignored. Paste hashes from your threat-intel feed, MISP export,
+# vendor advisory or the incident ticket here before running the tool.
+#
+# Example (EICAR anti-malware test file - safe, use it to test IOC matching):
+275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f, EICAR test file
+3395856ce81f2b7382dee72602f798b642f14140, EICAR test file (SHA1)
+44d88612fea8a8f36de82e1278abb02f, EICAR test file (MD5)

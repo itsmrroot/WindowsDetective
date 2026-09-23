@@ -1,0 +1,8 @@
+# Windows Detective - known-bad IP addresses
+# Powered by Bashar Salmo
+#
+# One IPv4/IPv6 address per line, optionally followed by a comma and a description.
+# Matched against live connections, DNS answers, logon sources, RDP sources and Sysmon network events.
+#
+# Example (TEST-NET documentation range - will never match real traffic):
+# 203.0.113.66, Example C2 server from ticket IR-0000
